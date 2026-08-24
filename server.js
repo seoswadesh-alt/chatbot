@@ -265,13 +265,19 @@ function looksBrokenHinglish(text) {
   const words = lower.split(/[^a-z]+/).filter(Boolean);
   let bad = 0;
   for (const w of words) {
-    if (w.length >= 12) bad += 1; // mashed compound words
-    if (w.length >= 7 && /[^aeiou]{4,}/i.test(w)) bad += 1;
-    if (/(.)\1\1/i.test(w)) bad += 1;
-    // weird vowel stacks often from bad transliteration
-    if (/[aeiou]{4,}/i.test(w)) bad += 1;
+    if (w.length >= 16) bad += 1; // mashed compound garbage
+    if (w.length >= 8 && /[^aeiou]{5,}/i.test(w)) bad += 1;
+    if (/(.)\1\1\1/i.test(w)) bad += 1;
+    if (/[aeiou]{5,}/i.test(w)) bad += 1;
   }
-  return bad >= 1;
+  return bad >= 2;
+}
+
+function stripMashedLatin(text) {
+  return String(text || "")
+    .replace(/\b[a-zA-Z]{16,}\b/g, " ")
+    .replace(/\s{2,}/g, " ")
+    .trim();
 }
 
 function hinglishFewShot(bot, user) {
@@ -355,7 +361,12 @@ async function callVenice(model, messages, options = {}) {
     }),
   });
 
-  const data = await response.json();
+  let data = {};
+  try {
+    data = await response.json();
+  } catch (e) {
+    data = { error: "Bad JSON from Venice" };
+  }
   return { response, data };
 }
 
@@ -365,7 +376,7 @@ function prepareMessages(messages) {
     if (msg.role === "user") {
       return { role: "user", content: prepareUserContent(msg.content) };
     }
-    return { role: msg.role, content: String(msg.content || "") };
+    return { role: msg.role, content: stripMashedLatin(String(msg.content || "")) };
   });
 }
 
@@ -1525,6 +1536,7 @@ app.post("/api/chat", requireUser, requireHours, async (req, res) => {
         ? "Easy Hinglish WhatsApp"
         : "clear natural English WhatsApp (NO Hinglish/Hindi words)";
       const openRp = isSimpleDirtyMode(setupText);
+      const wantLong = wantsLongReply(lastUser, sceneCard, { storyMode });
       const tokenBudget = (function () {
         let n = replyTokenBudget(lastUser, sceneCard, { storyMode });
         if (openRp) n = Math.min(n, storyMode ? 480 : 280);
@@ -1620,41 +1632,51 @@ app.post("/api/chat", requireUser, requireHours, async (req, res) => {
       }
 
       let reply = extractText(data?.choices?.[0]?.message);
-      if (reply && openRp && wantsHinglish) {
-        reply = scrubGarbledTail(reply);
-        if (looksLikeGarbledOutput(reply) || looksBrokenHinglish(reply)) {
-          const langFix = await callVenice(
-            CLEAR_MODEL,
-            [
+      if (openRp) {
+        if (reply) {
+          reply = stripMashedLatin(scrubGarbledTail(reply));
+        }
+        if (reply && (looksLikeGarbledOutput(reply) || looksBrokenHinglish(reply))) {
+          try {
+            const langFix = await callVenice(
+              CLEAR_MODEL,
+              [
+                {
+                  role: "system",
+                  content:
+                    `You are ${charOverrides.characterName || "Character"} (${charOverrides.botRole || "role"}). ` +
+                    "Rewrite as Easy Hinglish WhatsApp ONLY. Roman letters a-z. Keep dirty meaning. Stay this role. " +
+                    (storyMode ? "6-10 short lines. " : "1-4 short lines. ") +
+                    "FORBIDDEN: Chinese, Arabic, Hindi script, ॐ, English *stage directions*, fake mashed words. Output ONLY the chat reply.",
+                },
+                {
+                  role: "user",
+                  content:
+                    `User said: "${lastUser}"\n\nBroken draft to fix:\n${String(reply).slice(0, 800)}`,
+                },
+              ],
               {
-                role: "system",
-                content:
-                  `You are ${charOverrides.characterName || "Character"} (${charOverrides.botRole || "role"}). ` +
-                  "Rewrite as Easy Hinglish WhatsApp ONLY. Roman letters a-z. Keep dirty meaning. Stay this role. " +
-                  (storyMode ? "6-10 short lines. " : "1-4 short lines. ") +
-                  "FORBIDDEN: Chinese, Arabic, Hindi script, ॐ, English *stage directions*, fake mashed words, mazak/itni jaldi cop-outs. Output ONLY the chat reply.",
-              },
-              {
-                role: "user",
-                content:
-                  `User said: "${lastUser}"\n\nBroken draft to fix:\n${String(reply).slice(0, 1200)}`,
-              },
-            ],
-            {
-              temperature: 0.35,
-              max_tokens: tokenBudget,
-              includeVeniceSystemPrompt: false,
-              frequency_penalty: 0.1,
-              presence_penalty: 0,
+                temperature: 0.35,
+                max_tokens: Math.min(tokenBudget, 280),
+                includeVeniceSystemPrompt: false,
+                frequency_penalty: 0.1,
+                presence_penalty: 0,
+              }
+            );
+            steps += 1;
+            if (langFix.response.ok) {
+              const fixed = extractText(langFix.data?.choices?.[0]?.message);
+              if (fixed && fixed.length > 8 && !looksLikeGarbledOutput(fixed)) {
+                reply = stripMashedLatin(fixed);
+              }
             }
-          );
-          steps += 1;
-          if (langFix.response.ok) {
-            const fixed = extractText(langFix.data?.choices?.[0]?.message);
-            if (fixed && fixed.length > 8 && !looksLikeGarbledOutput(fixed)) {
-              reply = fixed;
-            }
+          } catch (e) {
+            console.error("langFix failed", e);
           }
+        }
+        if (!reply || looksLikeGarbledOutput(reply) || looksBrokenHinglish(reply)) {
+          const name = charOverrides.characterName || "Chat";
+          reply = name + ": Haan… sun rahi hu. Bol, kya chahiye? 💕";
         }
       }
 
@@ -2186,7 +2208,9 @@ app.post("/api/chat", requireUser, requireHours, async (req, res) => {
     });
   } catch (err) {
     console.error(err);
-    res.status(500).json({ error: "Server error. Try again." });
+    res.status(500).json({
+      error: "Reply delayed — send again in a few seconds.",
+    });
   }
 });
 
