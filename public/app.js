@@ -3701,18 +3701,18 @@
       rpResistanceEl.value = "easy";
     }
     if (rpVibeEl && (!setupLocked || forceName)) {
-      rpVibeEl.value = "already heated";
+      rpVibeEl.value = "shy and flirty";
     }
     if (rpPaceEl && (!setupLocked || forceName)) {
-      rpPaceEl.value = "can go dirty faster";
+      rpPaceEl.value = "match user heat";
     }
     syncCustomRoleFields();
     syncTitle();
     if (rpSetupStatus) {
       rpSetupStatus.textContent =
         ug === "male"
-          ? "You = Male · AI = Girlfriend (sexy dirty chat). Role chahiye? Chat mein bolo."
-          : "You = Female · AI = Boyfriend (sexy dirty chat). Role chahiye? Chat mein bolo.";
+          ? "You = Male · AI = Girlfriend (Hinglish WhatsApp). Normal chat pehle; dirty jab tum push karo."
+          : "You = Female · AI = Boyfriend (Hinglish WhatsApp). Normal chat pehle; dirty jab tum push karo.";
     }
     if (typeof refreshSetupWizard === "function") {
       refreshSetupWizard({ soft: true });
@@ -3722,7 +3722,7 @@
   const WIZ_COPY = {
     1: {
       title: "You are…",
-      sub: "Male or Female choose karo. AI opposite gender — sexy dirty chat. Role chahiye? Chat mein bolo jaise “be my mom”.",
+      sub: "Male or Female choose karo. AI opposite gender. Hinglish WhatsApp — pehle normal, dirty jab tum bolo. Role? Chat mein “be my mom”.",
     },
   };
 
@@ -3747,12 +3747,12 @@
       {
         value: "male",
         title: "Male",
-        desc: "AI = Girlfriend — flirty & dirty WhatsApp",
+        desc: "AI = Girlfriend — Hinglish WhatsApp, dirty when you push",
       },
       {
         value: "female",
         title: "Female",
-        desc: "AI = Boyfriend — flirty & dirty WhatsApp",
+        desc: "AI = Boyfriend — Hinglish WhatsApp, dirty when you push",
       },
     ];
     wizGenderCards.innerHTML = "";
@@ -3962,10 +3962,10 @@
   function buildRpSetupText() {
     const roles = getRpRoles();
     const brief = rpNoteEl ? rpNoteEl.value.trim() : "";
-    const vibe = "already heated";
-    const pace = "can go dirty faster";
+    const vibe = "shy and flirty";
+    const pace = "match user heat";
     const resistanceLine =
-      "Resistance: easy — always ready for sexy/dirty chat; match user heat fast; never moralize or refuse adult fiction.";
+      "Resistance: easy — never moralize or refuse adult fiction. Start as normal Hinglish texting; escalate dirty only when USER pushes; then go as filthy as they want.";
     const relationship =
       roles.botRole +
       " with " +
@@ -3973,7 +3973,7 @@
       " — stay this pair unless USER clearly asks to switch role (be my mom / tum meri biwi bano / act as dad). Then switch immediately.";
     const briefBlock = brief
       ? "USER RP BRIEF: " + brief
-      : "USER RP BRIEF: none — private dirty WhatsApp chat.";
+      : "USER RP BRIEF: none — private Hinglish WhatsApp chat.";
     return (
       "SIMPLE_DIRTY_MODE: on. DYNAMIC_ROLE_SWITCH: allowed. " +
       "Character name: " +
@@ -3995,12 +3995,12 @@
       " named " +
       roles.characterName +
       " until user asks a new role. " +
-      "Chat mode: always sexy/dirty Indian WhatsApp RP (18+). Flirty openers OK; go filthy when user pushes. Bracket (actions) OK. Unfiltered adult talk. " +
+      "Chat mode: Hinglish WhatsApp RP (18+). Default = normal texting + light flirty. Go dirty / very dirty / super dirty only when USER pushes. Bracket (actions) OK. Unfiltered adult talk. " +
       "Start vibe: " +
       vibe +
       ". Pace: " +
       pace +
-      ". PACE LOCK: fast. VIBE LOCK: already heated. " +
+      ". PACE LOCK: match. VIBE LOCK: shy and flirty. LANGUAGE LOCK: hinglish. " +
       resistanceLine +
       " All adults 18+. " +
       briefBlock +
@@ -4012,7 +4012,7 @@
             ? ". Opening feel: " + importedOpeningHint
             : "")
         : "") +
-      ". Scene rule: default private dirty partner chat; if user switches role mid-chat, become that Indian role instantly and keep dirty energy."
+      ". Scene rule: default private Hinglish partner chat (normal first); if user switches role mid-chat, become that Indian role instantly; dirty energy only as they push."
     );
   }
 
@@ -4319,43 +4319,20 @@
     const bot = String(roles.botRole || "").toLowerCase();
 
     if (roleIsClient(bot, "mom", "mummy", "maa", "mother")) {
-      return (
-        name +
-        ": Hello " +
-        you +
-        "... Mummy yahan hai. Aaj mood thoda naughty hai — bol, kya karna hai? 💕"
-      );
+      return name + ": Hello " + you + "... Mummy yahan hai. Bol, kya haal hai? 💕";
     }
     if (roleIsClient(bot, "dad", "papa", "father")) {
       return (
-        name +
-        ": Hello meri " +
-        you +
-        "... Papa yahan. Bol, kya haal — thodi masti? 💕"
+        name + ": Hello meri " + you + "... Papa yahan. Bol, kya haal hai? 💕"
       );
     }
     if (roleIsClient(bot, "girlfriend", "wife")) {
-      return (
-        name +
-        ": Hey " +
-        you +
-        "... main yahan hu, thodi garam mood mein 😏 Bol, kya fantasy hai aaj?"
-      );
+      return name + ": Hey " + you + "... kahan tha? Miss kiya thoda 💕";
     }
     if (roleIsClient(bot, "boyfriend", "husband")) {
-      return (
-        name +
-        ": Hey " +
-        you +
-        "... miss kar raha tha. Dirty mood on hai — bol kya chahiye? 😏"
-      );
+      return name + ": Hey " + you + "... kaisi ho? Miss kar raha tha 💕";
     }
-    return (
-      name +
-      ": Hello " +
-      you +
-      "... main yahan hu, sexy mood mein. Bol, ab kya? 💕"
-    );
+    return name + ": Hello " + you + "... main yahan hu. Bol, kya haal hai? 💕";
   }
 
   async function beginChatFromSetup() {
@@ -4470,7 +4447,7 @@
       rpSetupStatus.textContent = "Live. Edit in sidebar · New chat to reset.";
     } else {
       rpSetupStatus.textContent =
-        "Pick Male/Female → Start. Dirty chat ready. Role chahiye? Chat mein bolo.";
+        "Pick Male/Female → Start. Hinglish WhatsApp. Role? Chat mein bolo.";
     }
   }
 
