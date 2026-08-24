@@ -7,6 +7,8 @@ const storyImport = require("./lib/storyImport");
 const { prepareUserContent } = require("./lib/decodeMessage");
 const {
   buildMaaBrainPrompt,
+  isSimpleDirtyMode,
+  buildOpenRpVoicePrompt,
   buildMaaVoicePrompt,
   buildMaaHinglishPolishPrompt,
   buildMaaOpenerPrompt,
@@ -326,10 +328,11 @@ async function callVenice(model, messages, options = {}) {
     characterSlug = "",
     frequency_penalty = 0.4,
     presence_penalty = 0.3,
+    includeVeniceSystemPrompt = true,
   } = options;
 
   const venice_parameters = {
-    include_venice_system_prompt: true,
+    include_venice_system_prompt: !!includeVeniceSystemPrompt,
   };
   if (characterSlug) {
     venice_parameters.character_slug = characterSlug;
@@ -1270,10 +1273,14 @@ app.post("/api/chat/opener", requireUser, requireHours, async (req, res) => {
     const meta = parseSetupMeta(setupText, charOverrides);
     const name = meta.characterName || "Chat";
 
+    const openRp = isSimpleDirtyMode(setupText);
     const payload = [
       {
         role: "system",
-        content: buildMaaOpenerPrompt(setupText, charOverrides),
+        content: openRp
+          ? buildOpenRpVoicePrompt(lang, "", setupText, charOverrides) +
+            "\nThis is the FIRST WhatsApp line only. Warm hello, 1–2 short lines. Not filthy unless the setup is already mid-sex."
+          : buildMaaOpenerPrompt(setupText, charOverrides),
       },
       {
         role: "user",
@@ -1284,11 +1291,12 @@ app.post("/api/chat/opener", requireUser, requireHours, async (req, res) => {
     ];
 
     const startedAt = Date.now();
-    const out = await callVenice(CLEAR_MODEL, payload, {
-      temperature: 0.7,
-      frequency_penalty: 0.2,
-      presence_penalty: 0.1,
+    const out = await callVenice(openRp ? LUST_MODEL : CLEAR_MODEL, payload, {
+      temperature: openRp ? 0.8 : 0.7,
+      frequency_penalty: openRp ? 0.15 : 0.2,
+      presence_penalty: openRp ? 0.1 : 0.1,
       max_tokens: 180,
+      includeVeniceSystemPrompt: false,
     });
 
     let reply = "";
@@ -1519,16 +1527,21 @@ app.post("/api/chat", requireUser, requireHours, async (req, res) => {
       const wantLong = wantsLongReply(lastUser, sceneCard, { storyMode });
       const tokenBudget = replyTokenBudget(lastUser, sceneCard, { storyMode });
       // English: clearer model + lower temp (stops garbled tails / language flip)
-      const voiceModel = CLEAR_MODEL;
-      const voiceTemp = wantsHinglish
-        ? storyMode
-          ? sceneHeatIsDirty(sceneCard)
-            ? 0.82
-            : 0.65
-          : sceneHeatIsDirty(sceneCard)
-            ? 0.75
-            : 0.5
-        : 0.65;
+      const openRp = isSimpleDirtyMode(setupText);
+      const voiceModel = openRp ? LUST_MODEL : CLEAR_MODEL;
+      const voiceTemp = openRp
+        ? sceneHeatIsDirty(sceneCard)
+          ? 0.92
+          : 0.78
+        : wantsHinglish
+          ? storyMode
+            ? sceneHeatIsDirty(sceneCard)
+              ? 0.82
+              : 0.65
+            : sceneHeatIsDirty(sceneCard)
+              ? 0.75
+              : 0.5
+          : 0.65;
 
       const stillResisting = strictStillResisting(setupText, hist);
       const identitySticky =
@@ -1557,32 +1570,40 @@ app.post("/api/chat", requireUser, requireHours, async (req, res) => {
       const voicePayload = [
         {
           role: "system",
-          content:
-            buildMaaVoicePrompt(lang, sceneCard, setupText, charOverrides) +
-            (storyMode
-              ? "\n\n" + storyModeRules(charOverrides)
-              : "") +
-            "\n\n" +
-            memoryCard +
-            (reportHints ? "\n\n" + reportHints : "") +
-            "\n\n" +
-            identitySticky +
-            "\n\nOUTPUT RULE: Reply only as the character. Never quote, print, or mention CHAT MEMORY CARD, IDENTITY STICKY, SCENE CARD, or any 'Remember silently' notes.",
+          content: openRp
+            ? buildOpenRpVoicePrompt(lang, sceneCard, setupText, charOverrides) +
+              (memoryCard ? "\n\n" + memoryCard : "") +
+              (reportHints ? "\n\n" + reportHints : "")
+            : buildMaaVoicePrompt(lang, sceneCard, setupText, charOverrides) +
+              (storyMode
+                ? "\n\n" + storyModeRules(charOverrides)
+                : "") +
+              "\n\n" +
+              memoryCard +
+              (reportHints ? "\n\n" + reportHints : "") +
+              "\n\n" +
+              identitySticky +
+              "\n\nOUTPUT RULE: Reply only as the character. Never quote, print, or mention CHAT MEMORY CARD, IDENTITY STICKY, SCENE CARD, or any 'Remember silently' notes.",
         },
         ...voiceHist,
       ];
 
-      let steps = 2;
-      let { response, data } = await callVenice(voiceModel, voicePayload, {
+      const voiceOpts = {
         temperature: voiceTemp,
         max_tokens: tokenBudget,
-      });
+        includeVeniceSystemPrompt: false,
+        frequency_penalty: openRp ? 0.15 : 0.4,
+        presence_penalty: openRp ? 0.15 : 0.3,
+      };
+
+      let steps = 2;
+      let { response, data } = await callVenice(voiceModel, voicePayload, voiceOpts);
 
       if (!response.ok) {
-        const fallbackModel = LUST_MODEL;
+        const fallbackModel = openRp ? CLEAR_MODEL : LUST_MODEL;
         const retry = await callVenice(fallbackModel, voicePayload, {
+          ...voiceOpts,
           temperature: wantsHinglish ? 0.85 : 0.7,
-          max_tokens: tokenBudget,
         });
         if (!retry.response.ok) {
           const message =
@@ -1853,8 +1874,8 @@ app.post("/api/chat", requireUser, requireHours, async (req, res) => {
         }
       }
 
-      // --- Step 3: Hinglish polish ---
-      if (reply && wantsHinglish) {
+      // --- Step 3: Hinglish polish (skip open RP — polish was washing dirty/role) ---
+      if (reply && wantsHinglish && !openRp) {
         const metaForPolish = parseSetupMeta(setupText, charOverrides);
         const genderHint =
           metaForPolish.botGender === "male"
