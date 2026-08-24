@@ -2594,6 +2594,23 @@ body {
   margin-bottom: 12px;
 }
 
+#wiz-gender-cards.wiz-choice-cards {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.setup-gender-lead {
+  margin: 0 0 4px;
+  font-size: 0.92rem;
+  line-height: 1.35;
+  opacity: 0.9;
+}
+
+#setup-modal.wiz-on [data-wiz-field="user-gender"] {
+  display: none;
+}
+
 .wiz-choice-card {
   text-align: left;
   border: 1px solid var(--line);
