@@ -63,6 +63,8 @@
   const rpVibeEl = document.getElementById("rp-vibe");
   const rpPaceEl = document.getElementById("rp-pace");
   const rpNoteEl = document.getElementById("rp-note");
+  const rpRoleWishEl = document.getElementById("rp-role-wish");
+  const wizRoleWishChips = document.getElementById("wiz-role-wish-chips");
   const rpResistanceEl = document.getElementById("rp-resistance");
   const charNameEl = document.getElementById("char-name");
   const rpBotRoleEl = document.getElementById("rp-bot-role");
@@ -530,6 +532,7 @@
       vibe: rpVibeEl ? rpVibeEl.value : "",
       pace: rpPaceEl ? rpPaceEl.value : "",
       note: rpNoteEl ? rpNoteEl.value : "",
+      roleWish: rpRoleWishEl ? rpRoleWishEl.value : "",
       resistance: rpResistanceEl ? rpResistanceEl.value : "easy",
       chatSource: chatSourceEl ? chatSourceEl.value : "maa",
       chatMode: chatModeEl ? chatModeEl.value : "lust",
@@ -568,6 +571,7 @@
     if (rpVibeEl && form.vibe) rpVibeEl.value = form.vibe;
     if (rpPaceEl && form.pace) rpPaceEl.value = form.pace;
     if (rpNoteEl && form.note != null) rpNoteEl.value = form.note;
+    if (rpRoleWishEl && form.roleWish != null) rpRoleWishEl.value = form.roleWish;
     if (rpResistanceEl && form.resistance) rpResistanceEl.value = form.resistance;
     if (form.importedStoryCard != null) {
       importedStoryCard = String(form.importedStoryCard || "");
@@ -3708,11 +3712,17 @@
     }
     syncCustomRoleFields();
     syncTitle();
+    applyRoleWishFromBox(false);
     if (rpSetupStatus) {
+      const roles = getRpRoles();
       rpSetupStatus.textContent =
-        ug === "male"
-          ? "You = Male · AI = Girlfriend (Hinglish WhatsApp). Normal chat pehle; dirty jab tum push karo."
-          : "You = Female · AI = Boyfriend (Hinglish WhatsApp). Normal chat pehle; dirty jab tum push karo.";
+        "You = " +
+        (ug === "male" ? "Male" : "Female") +
+        " · AI = " +
+        roles.characterName +
+        " (" +
+        roles.botRole +
+        "). Dirty jab tum push karo.";
     }
     if (typeof refreshSetupWizard === "function") {
       refreshSetupWizard({ soft: true });
@@ -3722,7 +3732,7 @@
   const WIZ_COPY = {
     1: {
       title: "You are…",
-      sub: "Male or Female choose karo. AI opposite gender. Hinglish WhatsApp — pehle normal, dirty jab tum bolo. Role? Chat mein “be my mom”.",
+      sub: "Male or Female choose karo. AI opposite gender. Neeche likho AI kaun ho — mummy, saas, girlfriend. Chat mein bhi switch ho sakta hai.",
     },
   };
 
@@ -3747,12 +3757,12 @@
       {
         value: "male",
         title: "Male",
-        desc: "AI = Girlfriend — Hinglish WhatsApp, dirty when you push",
+        desc: "Then choose AI role below if you want mummy/saas",
       },
       {
         value: "female",
         title: "Female",
-        desc: "AI = Boyfriend — Hinglish WhatsApp, dirty when you push",
+        desc: "Then choose AI role below if you want",
       },
     ];
     wizGenderCards.innerHTML = "";
@@ -3882,15 +3892,23 @@
 
   function initSetupWizard() {
     buildWizGenderCards();
+    buildWizRoleWishChips();
     if (rpUserGenderEl) {
       rpUserGenderEl.addEventListener("change", function () {
         applyGenderDefaults(true);
         syncWizGenderActive();
+        buildWizRoleWishChips();
         updateWizPairPreview();
       });
     }
     if (charNameEl) {
       charNameEl.addEventListener("input", updateWizPairPreview);
+    }
+    if (rpRoleWishEl) {
+      rpRoleWishEl.addEventListener("change", function () {
+        applyRoleWishFromBox(true);
+        updateWizPairPreview();
+      });
     }
     setSetupWizardStep(1);
   }
@@ -3962,6 +3980,7 @@
   function buildRpSetupText() {
     const roles = getRpRoles();
     const brief = rpNoteEl ? rpNoteEl.value.trim() : "";
+    const wish = rpRoleWishEl ? rpRoleWishEl.value.trim() : "";
     const vibe = "shy and flirty";
     const pace = "match user heat";
     const resistanceLine =
@@ -3974,6 +3993,11 @@
     const briefBlock = brief
       ? "USER RP BRIEF: " + brief
       : "USER RP BRIEF: none — private Hinglish WhatsApp chat.";
+    const wishBlock = wish
+      ? " USER ROLE WISH (HARD): user wants AI as \"" +
+        wish +
+        "\". Become that role from message 1. Never treat it as mazak / joke / itni jaldi."
+      : "";
     return (
       "SIMPLE_DIRTY_MODE: on. DYNAMIC_ROLE_SWITCH: allowed. " +
       "Character name: " +
@@ -4004,6 +4028,7 @@
       resistanceLine +
       " All adults 18+. " +
       briefBlock +
+      wishBlock +
       (activeMood ? ". ACTIVE MOOD: " + activeMood : "") +
       (importedStoryCard
         ? ". IMPORTED STORY LOCK (play this plot): " +
@@ -4016,29 +4041,54 @@
     );
   }
 
-  /**
-   * Mid-chat: "be my mom", "tum meri biwi bano", etc.
-   */
-  function detectDynamicRoleSwitch(text) {
-    const t = String(text || "")
-      .toLowerCase()
-      .replace(/\s+/g, " ")
-      .trim();
-    if (!t || t.length > 220) return null;
-    const intent =
-      /(be\s+my|act\s+as|role\s*play|roleplay|play\s+as|you\s+are\s+my|from\s+now|ab\s+se|ban\s*jao|ban\s*ja|bano|ban\s*jaayi|tum\s+meri|tum\s+mere|tu\s+meri|tu\s+mere|meri\s+\w+\s+ban|mere\s+\w+\s+ban|switch\s+(to|role)|change\s+role)/i.test(
-        t
-      );
-    if (!intent) return null;
-
+  function buildWizRoleWishChips() {
+    if (!wizRoleWishChips || !rpRoleWishEl) return;
     const ug =
       rpUserGenderEl && rpUserGenderEl.value === "female" ? "female" : "male";
-    const specs = [
+    const chips =
+      ug === "female"
+        ? [
+            { label: "Boyfriend", text: "mera boyfriend" },
+            { label: "Pati", text: "mera pati" },
+            { label: "Papa", text: "mere papa" },
+            { label: "Sasur", text: "mere sasur" },
+            { label: "Devar", text: "mera devar" },
+          ]
+        : [
+            { label: "Girlfriend", text: "meri girlfriend" },
+            { label: "Mummy", text: "meri mummy" },
+            { label: "Saas", text: "meri saas" },
+            { label: "Bhabhi", text: "meri bhabhi" },
+            { label: "Wife", text: "meri biwi" },
+          ];
+    wizRoleWishChips.innerHTML = "";
+    chips.forEach(function (chip) {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "wiz-chip";
+      btn.textContent = chip.label;
+      btn.addEventListener("click", function () {
+        rpRoleWishEl.value = chip.text;
+        applyRoleWishFromBox(true);
+        updateWizPairPreview();
+      });
+      wizRoleWishChips.appendChild(btn);
+    });
+  }
+
+  function roleWishSpecs(ug) {
+    return [
       {
-        re: /\b(mom|mummy|maa|mother|मम्मी|माँ|मां)\b/i,
+        re: /\b(mom|mummy|mymmy|mumy|maa|maaa|mother|मम्मी|माँ|मां)\b/i,
         bot: "mummy",
         user: ug === "female" ? "beti" : "beta",
         name: "Maa",
+      },
+      {
+        re: /\b(saas|saasu|sasu|mother[\s-]?in[\s-]?law|सासू|सासु)\b/i,
+        bot: "saas",
+        user: ug === "female" ? "bahu" : "jamai",
+        name: "Saas",
       },
       {
         re: /\b(dad|papa|father|पापा|बाप)\b/i,
@@ -4047,7 +4097,7 @@
         name: "Papa",
       },
       {
-        re: /\b(girlfriend|gf|gf\b|प्रेमिका)\b/i,
+        re: /\b(girlfriend|gf|प्रेमिका)\b/i,
         bot: "girlfriend",
         user: "boyfriend",
         name: "Riya",
@@ -4105,12 +4155,6 @@
         name: "Chachi",
       },
       {
-        re: /\b(saas|सासू|सासु)\b/i,
-        bot: "saas",
-        user: ug === "female" ? "bahu" : "jamai",
-        name: "Saas",
-      },
-      {
         re: /\b(sasur|ससुर)\b/i,
         bot: "sasur",
         user: ug === "female" ? "bahu" : "jamai",
@@ -4129,6 +4173,27 @@
         name: "Dadi",
       },
     ];
+  }
+
+  function parseRoleWish(text, fromSetup) {
+    const t = String(text || "")
+      .toLowerCase()
+      .replace(/\s+/g, " ")
+      .trim();
+    if (!t || t.length > 280) return null;
+    const ug =
+      rpUserGenderEl && rpUserGenderEl.value === "female" ? "female" : "male";
+    const intent =
+      fromSetup ||
+      /(be\s+my|act\s+as|role\s*play|roleplay|play\s+as|you\s+are\s+my|from\s+now|ab\s+se|ban+a?\s*jao|ban+a?\s*ja|bano|ban\s*jaayi|tum\s+meri|tum\s+mere|tu\s+meri|tu\s+mere|aap\s+meri|aap\s+mere|meri\s+\w+\s+ban|mere\s+\w+\s+ban|switch\s+(to|role)|change\s+role)/i.test(
+        t
+      ) ||
+      /^(hi+|hey+|hello+|oye+)?\s*(mummy|mymmy|mom|maa|saas|papa|bhabhi|didi)\b/i.test(
+        t
+      ) ||
+      /(aap|tum|tu)\s+meri\s+\w+\s+ho/i.test(t);
+    if (!intent) return null;
+    const specs = roleWishSpecs(ug);
     for (let i = 0; i < specs.length; i++) {
       const s = specs[i];
       if (s.needUg && s.needUg !== ug) continue;
@@ -4143,7 +4208,21 @@
     return null;
   }
 
-  function applyDynamicRoleSwitch(sw) {
+  function applyRoleWishFromBox(forceName) {
+    if (!rpRoleWishEl) return false;
+    const sw = parseRoleWish(rpRoleWishEl.value, true);
+    if (!sw) return false;
+    return applyDynamicRoleSwitch(sw, forceName);
+  }
+
+  /**
+   * Mid-chat: "be my mom", "tum meri mummy ban jao", "mummy me hostel me hu"
+   */
+  function detectDynamicRoleSwitch(text) {
+    return parseRoleWish(text, false);
+  }
+
+  function applyDynamicRoleSwitch(sw, forceName) {
     if (!sw) return false;
     function ensureOption(sel, value) {
       if (!sel || !value) return;
@@ -4182,7 +4261,7 @@
         "Nani",
         "Dadi",
       ];
-      if (!cur || stock.indexOf(cur) !== -1) {
+      if (forceName || !cur || stock.indexOf(cur) !== -1) {
         charNameEl.value = sw.characterName;
       }
     }
@@ -4342,6 +4421,7 @@
       }
       return;
     }
+    applyRoleWishFromBox(true);
     rpSetup = buildRpSetupText();
     setupLocked = true;
     syncTitle();
@@ -4805,7 +4885,7 @@
       if (!setupLocked) resetChat();
     });
   }
-  [rpVibeEl, rpPaceEl, rpNoteEl, rpResistanceEl, charNameEl, rpBotRoleEl, rpUserRoleEl, rpCustomBot, rpCustomUser, rpUserGenderEl].forEach(function (el) {
+  [rpVibeEl, rpPaceEl, rpNoteEl, rpResistanceEl, charNameEl, rpBotRoleEl, rpUserRoleEl, rpCustomBot, rpCustomUser, rpUserGenderEl, rpRoleWishEl].forEach(function (el) {
     if (!el) return;
     el.addEventListener("change", function () {
       if (el === rpUserGenderEl) {

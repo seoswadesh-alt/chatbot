@@ -415,6 +415,16 @@
             <option value="female">Female</option>
           </select>
         </label>
+        <label class="full" data-wiz-step="1" data-wiz-field="role-wish">
+          AI ko kaun banana hai? (optional)
+          <input
+            id="rp-role-wish"
+            type="text"
+            maxlength="80"
+            placeholder="e.g. meri mummy, saas, girlfriend, bhabhi…"
+          />
+        </label>
+        <div id="wiz-role-wish-chips" class="wiz-chips full" data-wiz-step="1"></div>
         <label class="full" data-wiz-step="1" data-wiz-field="name">
           AI name (optional)
           <input
@@ -529,8 +539,8 @@
           <p class="wiz-step-label" id="wiz-step-label">Quick start</p>
           <h2 id="wiz-title">You are…</h2>
           <p class="setup-sub" id="wiz-sub">
-            Male or Female choose karo. AI opposite gender. Hinglish WhatsApp —
-            pehle normal, dirty jab tum push karo. Role? Chat mein bolo jaise “be my mom”.
+            Male or Female choose karo. Neeche likho AI kaun ho — mummy, saas,
+            girlfriend… Chat mein bhi switch ho sakta hai.
           </p>
           <p class="wiz-pair-preview" id="wiz-pair-preview" aria-live="polite"></p>
           <div id="wiz-role-cards" class="wiz-role-cards wiz-only hidden" role="listbox"></div>
