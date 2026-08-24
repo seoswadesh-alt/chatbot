@@ -1524,15 +1524,19 @@ app.post("/api/chat", requireUser, requireHours, async (req, res) => {
       const langStyle = wantsHinglish
         ? "Easy Hinglish WhatsApp"
         : "clear natural English WhatsApp (NO Hinglish/Hindi words)";
-      const wantLong = wantsLongReply(lastUser, sceneCard, { storyMode });
-      const tokenBudget = replyTokenBudget(lastUser, sceneCard, { storyMode });
-      // English: clearer model + lower temp (stops garbled tails / language flip)
       const openRp = isSimpleDirtyMode(setupText);
+      const tokenBudget = (function () {
+        let n = replyTokenBudget(lastUser, sceneCard, { storyMode });
+        if (openRp) n = Math.min(n, storyMode ? 480 : 280);
+        return n;
+      })();
       const voiceModel = openRp ? LUST_MODEL : CLEAR_MODEL;
       const voiceTemp = openRp
-        ? sceneHeatIsDirty(sceneCard)
-          ? 0.92
-          : 0.78
+        ? storyMode
+          ? 0.7
+          : sceneHeatIsDirty(sceneCard)
+            ? 0.78
+            : 0.68
         : wantsHinglish
           ? storyMode
             ? sceneHeatIsDirty(sceneCard)
@@ -1616,6 +1620,43 @@ app.post("/api/chat", requireUser, requireHours, async (req, res) => {
       }
 
       let reply = extractText(data?.choices?.[0]?.message);
+      if (reply && openRp && wantsHinglish) {
+        reply = scrubGarbledTail(reply);
+        if (looksLikeGarbledOutput(reply) || looksBrokenHinglish(reply)) {
+          const langFix = await callVenice(
+            CLEAR_MODEL,
+            [
+              {
+                role: "system",
+                content:
+                  `You are ${charOverrides.characterName || "Character"} (${charOverrides.botRole || "role"}). ` +
+                  "Rewrite as Easy Hinglish WhatsApp ONLY. Roman letters a-z. Keep dirty meaning. Stay this role. " +
+                  (storyMode ? "6-10 short lines. " : "1-4 short lines. ") +
+                  "FORBIDDEN: Chinese, Arabic, Hindi script, ॐ, English *stage directions*, fake mashed words, mazak/itni jaldi cop-outs. Output ONLY the chat reply.",
+              },
+              {
+                role: "user",
+                content:
+                  `User said: "${lastUser}"\n\nBroken draft to fix:\n${String(reply).slice(0, 1200)}`,
+              },
+            ],
+            {
+              temperature: 0.35,
+              max_tokens: tokenBudget,
+              includeVeniceSystemPrompt: false,
+              frequency_penalty: 0.1,
+              presence_penalty: 0,
+            }
+          );
+          steps += 1;
+          if (langFix.response.ok) {
+            const fixed = extractText(langFix.data?.choices?.[0]?.message);
+            if (fixed && fixed.length > 8 && !looksLikeGarbledOutput(fixed)) {
+              reply = fixed;
+            }
+          }
+        }
+      }
 
       const needsFresh =
         (reply && isTooSimilar(reply, messages)) ||
