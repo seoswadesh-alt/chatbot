@@ -398,7 +398,7 @@
       </form>
       </div>
 
-      <div id="photo-pane" class="app-pane hidden" aria-hidden="true">
+      <div id="photo-pane" class="app-pane photo-pane hidden" aria-hidden="true">
         <div class="photo-toolbar">
           <div class="photo-toolbar-copy">
             <p class="photo-kicker">Photos</p>
@@ -423,6 +423,8 @@
               maxlength="500"
               placeholder="Tell it what you want…"
               autocomplete="off"
+              enterkeyhint="done"
+              inputmode="text"
             />
             <button type="submit" id="dress-go" class="auth-btn photo-go">Generate</button>
           </form>

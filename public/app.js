@@ -3165,10 +3165,8 @@
     };
     forceNewPhoto = false;
     paintPhotoComposer();
-    if (dressExtraEl) {
-      dressExtraEl.value = "";
-      dressExtraEl.focus();
-    }
+    if (dressExtraEl) dressExtraEl.value = "";
+    keepPhotoKeyboardClosed();
   }
 
   function photoStoreKey() {
@@ -3229,6 +3227,7 @@
       empty.textContent =
         "Upload a photo, write what you want, tap Generate.";
       photoThreadEl.appendChild(empty);
+      paintPhotoChrome();
       return;
     }
     photoHistory.forEach(function (item) {
@@ -3254,6 +3253,11 @@
       }
     });
     photoThreadEl.scrollTop = photoThreadEl.scrollHeight;
+    var lastImg = photoThreadEl.querySelector(".photo-result:last-of-type img");
+    if (lastImg && lastImg.scrollIntoView) {
+      lastImg.scrollIntoView({ block: "nearest", behavior: "smooth" });
+    }
+    paintPhotoChrome();
   }
 
   function addPhotoTurn(prompt, url, caption) {
@@ -3271,6 +3275,44 @@
         : "Tell it what you want…";
     }
     if (dressGoBtn) dressGoBtn.textContent = editing ? "Apply" : "Generate";
+    paintPhotoChrome();
+  }
+
+  function paintPhotoChrome() {
+    if (!photoPane) return;
+    var has = false;
+    for (var i = 0; i < photoHistory.length; i++) {
+      if (photoHistory[i] && photoHistory[i].url) {
+        has = true;
+        break;
+      }
+    }
+    photoPane.classList.toggle("has-looks", has);
+  }
+
+  function keepPhotoKeyboardClosed() {
+    if (dressCustomEl) dressCustomEl.blur();
+    if (!dressExtraEl) return;
+    dressExtraEl.blur();
+    if (window.matchMedia && window.matchMedia("(pointer: coarse)").matches) {
+      dressExtraEl.readOnly = true;
+      requestAnimationFrame(function () {
+        dressExtraEl.readOnly = false;
+      });
+    }
+    var more = photoPane && photoPane.querySelector(".dress-more");
+    if (more && more.open && photoPane.classList.contains("has-looks")) {
+      more.open = false;
+    }
+  }
+
+  function focusPhotoInputIfDesktop() {
+    if (!dressExtraEl) return;
+    if (window.matchMedia && window.matchMedia("(pointer: coarse)").matches) {
+      dressExtraEl.blur();
+      return;
+    }
+    dressExtraEl.focus();
   }
 
   function switchAppTab(name) {
@@ -3291,7 +3333,7 @@
       loadPhotoHistory();
       renderPhotoThread();
       paintPhotoComposer();
-      if (dressExtraEl) dressExtraEl.focus();
+      keepPhotoKeyboardClosed();
     }
   }
 
@@ -3389,6 +3431,19 @@
     });
   }
 
+  let photoCreditAskAt = 0;
+  async function requestPhotoCreditsOnce() {
+    if (Date.now() - photoCreditAskAt < 60 * 1000) return;
+    photoCreditAskAt = Date.now();
+    try {
+      await fetch("/api/image/credit-request", {
+        method: "POST",
+        headers: authHeaders(),
+        body: JSON.stringify({}),
+      });
+    } catch (e) {}
+  }
+
   async function runDressGenerate() {
     if (dressBusy) return;
     ensureLastDressFromThread();
@@ -3396,10 +3451,12 @@
     paintPhotoComposer();
     if (!dressLastDataUrl && !usePrev) {
       setDressStatus("Upload a photo first", "err");
+      keepPhotoKeyboardClosed();
       return;
     }
     if (!dressOwnsEl || !dressOwnsEl.checked || !dressAdultEl || !dressAdultEl.checked) {
       setDressStatus("Tick both boxes (your photo + 18+)", "err");
+      keepPhotoKeyboardClosed();
       return;
     }
     if (!dressBodyId) dressBodyId = "keep";
@@ -3407,8 +3464,10 @@
     const custom = dressCustomEl ? dressCustomEl.value.trim() : "";
     if (!extra && !custom && (!dressClothesId || dressClothesId === "keep")) {
       setDressStatus("Write what you want in the prompt", "err");
+      focusPhotoInputIfDesktop();
       return;
     }
+    keepPhotoKeyboardClosed();
     dressBusy = true;
     if (dressGoBtn) dressGoBtn.disabled = true;
     setDressStatus(usePrev ? "Updating this photo…" : "Generating… 20–40 sec", "");
@@ -3457,6 +3516,23 @@
           setDressStatus(data.error || "No time left", "err");
           return;
         }
+        if (data.code === "RATE" || res.status === 429) {
+          const used = data.usedHour != null ? data.usedHour : "";
+          const cap = data.cap != null ? data.cap : 25;
+          setDressStatus(
+            "Hourly photo limit (" +
+              (used !== "" ? used + "/" : "") +
+              cap +
+              "). Pay for more time, or wait — we asked admin for extra looks.",
+            "err"
+          );
+          try {
+            openPaySheet();
+          } catch (e) {}
+          requestPhotoCreditsOnce();
+          keepPhotoKeyboardClosed();
+          return;
+        }
         if (data.code === "PAID_ONLY") {
           toast(data.error || "Paid users only", "err");
           try {
@@ -3472,8 +3548,11 @@
       addPhotoTurn(extra, url, label);
       rememberDressLook(data);
       savePhotoHistory();
-      setDressStatus("Done — type the next change below", "ok");
+      setDressStatus("Done — tap below to type the next change", "ok");
       toast("Look ready", "ok");
+      keepPhotoKeyboardClosed();
+      setTimeout(keepPhotoKeyboardClosed, 80);
+      setTimeout(keepPhotoKeyboardClosed, 320);
     } catch (e) {
       setDressStatus((e && e.message) || "Network error", "err");
     } finally {
@@ -3486,6 +3565,14 @@
     photoForm.addEventListener("submit", function (e) {
       e.preventDefault();
       runDressGenerate();
+    });
+  }
+  if (dressGoBtn) {
+    dressGoBtn.addEventListener("pointerdown", function () {
+      if (window.matchMedia && window.matchMedia("(pointer: coarse)").matches) {
+        if (dressExtraEl) dressExtraEl.blur();
+        if (dressCustomEl) dressCustomEl.blur();
+      }
     });
   }
   if (tabChatBtn) {
@@ -3535,13 +3622,13 @@
     renderPhotoThread();
     savePhotoHistory();
     setDressStatus("Cleared — upload a photo to start again", "ok");
-    if (dressExtraEl) dressExtraEl.focus();
+    keepPhotoKeyboardClosed();
   }
   if (photoNewBtn) {
     photoNewBtn.addEventListener("click", function () {
       resetPhotoSource();
       setDressStatus("Upload a new photo, then write a prompt", "");
-      if (dressExtraEl) dressExtraEl.focus();
+      keepPhotoKeyboardClosed();
     });
   }
   if (photoClearBtn) {
@@ -6432,6 +6519,22 @@
       });
       input.addEventListener("blur", function () {
         setTimeout(syncAppViewport, 120);
+      });
+    }
+    if (dressExtraEl) {
+      dressExtraEl.addEventListener("focus", function () {
+        setTimeout(syncAppViewport, 120);
+      });
+      dressExtraEl.addEventListener("blur", function () {
+        setTimeout(function () {
+          syncAppViewport();
+          var lastImg =
+            photoThreadEl &&
+            photoThreadEl.querySelector(".photo-result:last-of-type img");
+          if (lastImg && lastImg.scrollIntoView) {
+            lastImg.scrollIntoView({ block: "nearest", behavior: "smooth" });
+          }
+        }, 180);
       });
     }
 

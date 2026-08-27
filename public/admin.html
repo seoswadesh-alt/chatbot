@@ -26,7 +26,7 @@
         <div class="brand-block">
           <p class="brand-kicker">Control panel</p>
           <h1>Admin</h1>
-          <p class="sub">Users · payments · chat history · hours unlock</p>
+          <p class="sub">Users · payments · chat · photos · hours unlock</p>
         </div>
         <div id="top-bar" class="top-actions hidden">
           <a class="link-chat" href="/">← Chat app</a>
@@ -582,6 +582,14 @@
             <button type="button" class="btn-ghost btn-sm" data-close-chat>Close</button>
           </div>
         </header>
+        <div class="chat-drawer-switch" role="tablist" aria-label="User history">
+          <button type="button" id="drawer-tab-chat" class="chat-session-tab active" data-drawer-tab="chat">
+            Chat
+          </button>
+          <button type="button" id="drawer-tab-photos" class="chat-session-tab" data-drawer-tab="photos">
+            Photos
+          </button>
+        </div>
         <div id="chat-session-tabs" class="chat-session-tabs hidden"></div>
         <div id="chat-drawer-body" class="chat-drawer-body">
           <p class="meta">Loading…</p>

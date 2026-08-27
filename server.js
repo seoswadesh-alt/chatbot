@@ -886,6 +886,26 @@ app.get("/api/admin/users/:id/chat", requireAdmin, (req, res) => {
   });
 });
 
+app.get("/api/admin/users/:id/photos", requireAdmin, (req, res) => {
+  const result = billing.getUserPhotosAdmin(req.params.id);
+  if (!result.ok) return res.status(404).json({ error: result.error });
+  res.json(result);
+});
+
+app.post("/api/admin/users/:id/photo-credits", requireAdmin, (req, res) => {
+  const add =
+    req.body && req.body.add != null ? req.body.add : req.body && req.body.hours;
+  const result = billing.adminAddPhotoCredits(req.params.id, add);
+  if (!result.ok) return res.status(400).json({ error: result.error });
+  res.json(result);
+});
+
+app.post("/api/image/credit-request", requireUser, (req, res) => {
+  const result = billing.requestPhotoCredits(req.userId);
+  if (!result.ok) return res.status(400).json({ error: result.error });
+  res.json(result);
+});
+
 app.post("/api/admin/users/:id/hours", requireAdmin, (req, res) => {
   const mode = String(req.body?.mode || "add");
   const result =
@@ -1495,11 +1515,15 @@ app.post(
         caption: result.caption || result.outfit.label,
         clothesId: result.outfit.id,
         bodyId: result.body && result.body.id,
+        photoUsedHour: result.usage && result.usage.usedHour,
+        photoCap: result.usage && result.usage.cap,
+        photoBonus: result.usage && result.usage.bonus,
         ...liveBillingFields(req.userId),
       });
     } catch (err) {
       const msg = (err && err.message) || "Could not make that look";
       const code = (err && err.code) || "";
+      const usage = err && err.photoUsage;
       const status =
         code === "RATE"
           ? 429
@@ -1511,7 +1535,13 @@ app.post(
               ? 400
               : 502;
       console.error("image/dress:", msg);
-      res.status(status).json({ error: msg, code: code || undefined });
+      res.status(status).json({
+        error: msg,
+        code: code || undefined,
+        usedHour: usage && usage.usedHour,
+        cap: usage && usage.cap,
+        bonus: usage && usage.bonus,
+      });
     }
   }
 );

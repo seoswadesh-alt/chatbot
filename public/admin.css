@@ -1466,6 +1466,73 @@ button.id-pill.id-link:hover {
   letter-spacing: -0.02em;
 }
 
+.chat-drawer-switch {
+  display: flex;
+  gap: 6px;
+  padding: 8px 16px 0;
+  flex-shrink: 0;
+}
+
+.admin-photo-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 14px;
+}
+
+.admin-photo-look {
+  margin: 0;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  overflow: hidden;
+  background: #f7faf9;
+}
+
+.admin-photo-look img {
+  display: block;
+  width: 100%;
+  max-height: 420px;
+  object-fit: contain;
+  background: #0f1418;
+  cursor: zoom-in;
+}
+
+.admin-photo-look figcaption {
+  padding: 10px 12px 12px;
+}
+
+.admin-photo-look .who {
+  display: block;
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-bottom: 4px;
+}
+
+.admin-photo-look p {
+  margin: 0;
+  font-size: 0.92rem;
+  line-height: 1.4;
+  color: var(--text);
+}
+
+.admin-photo-look .muted {
+  margin-top: 6px;
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+
+.uc-chip.photos {
+  background: rgba(8, 120, 94, 0.12);
+  color: #08785e;
+}
+
+.uc-chip.photo-ask {
+  background: rgba(184, 50, 64, 0.12);
+  color: #9a2f3c;
+}
+
 .chat-drawer-body {
   flex: 1;
   overflow-y: auto;

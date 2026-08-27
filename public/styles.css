@@ -4012,7 +4012,20 @@ body {
   }
 
   .photo-toolbar {
-    padding: 10px 12px;
+    padding: 6px 8px 4px;
+    gap: 6px;
+  }
+
+  .photo-toolbar-copy {
+    min-width: 0;
+  }
+
+  .photo-kicker {
+    font-size: 0.95rem;
+  }
+
+  .photo-lead {
+    display: none;
   }
 
   .photo-toolbar-actions {
@@ -4021,21 +4034,108 @@ body {
 
   .photo-new-btn,
   .photo-clear-btn {
-    padding: 8px 10px;
-    font-size: 0.8rem;
+    padding: 7px 10px;
+    font-size: 0.76rem;
+    min-height: 36px;
   }
 
   .photo-dock {
-    padding: 10px 12px;
+    padding: 6px 8px 8px;
+    gap: 6px;
   }
 
   .photo-thread {
-    padding: 14px 12px 16px;
+    padding: 8px 8px 10px;
+    gap: 8px;
+  }
+
+  .photo-result {
+    width: 100%;
+  }
+
+  .photo-result img {
+    max-height: min(52dvh, 480px);
+    border-radius: 12px;
+  }
+
+  .photo-composer {
+    gap: 6px;
+  }
+
+  .photo-pick {
+    width: 42px;
+    height: 42px;
+    border-radius: 12px;
+  }
+
+  .photo-composer input[type="text"] {
+    height: 42px;
+    padding: 0 10px;
   }
 
   .photo-go {
-    min-width: 82px;
-    padding: 0 12px;
+    min-width: 72px;
+    height: 42px;
+    min-height: 42px;
+    padding: 0 10px;
+    font-size: 0.86rem;
+  }
+
+  .photo-legal {
+    gap: 6px 12px;
+  }
+
+  .dress-check {
+    font-size: 0.78rem !important;
+    gap: 6px !important;
+  }
+
+  .dress-more {
+    padding: 4px 10px;
+  }
+
+  .dress-more summary {
+    min-height: 28px;
+    font-size: 0.8rem;
+  }
+
+  #photo-pane.has-looks .photo-legal,
+  #photo-pane.has-looks .dress-more {
+    display: none;
+  }
+
+  #photo-pane.has-looks .photo-dock {
+    padding: 6px 8px 8px;
+    gap: 4px;
+  }
+
+  #photo-pane.has-looks .photo-foot {
+    gap: 2px;
+  }
+
+  #photo-pane.has-looks .dress-status {
+    font-size: 0.75rem;
+  }
+
+  #photo-pane.has-looks .photo-prompt-bubble {
+    font-size: 0.82rem;
+    padding: 6px 10px;
+  }
+
+  #photo-pane.has-looks .photo-result:not(:last-of-type) img {
+    max-height: 96px;
+  }
+
+  #photo-pane.has-looks .photo-result:last-of-type img {
+    max-height: calc(var(--app-height, 100dvh) - 11.5rem);
+  }
+
+  .photo-lightbox {
+    padding: 36px 8px 16px;
+  }
+
+  .photo-lightbox img {
+    max-height: 92dvh;
   }
 
   /* All overlays centered in the phone — never bottom-sheet */
@@ -4376,5 +4476,28 @@ body {
     width: auto;
     max-width: none;
     box-sizing: border-box;
+  }
+}
+
+@media (max-width: 720px) {
+  .photo-lead {
+    display: none;
+  }
+
+  #photo-pane.has-looks .photo-legal,
+  #photo-pane.has-looks .dress-more {
+    display: none;
+  }
+
+  #photo-pane.has-looks .photo-result {
+    width: 100%;
+  }
+
+  #photo-pane.has-looks .photo-result:not(:last-of-type) img {
+    max-height: 96px;
+  }
+
+  #photo-pane.has-looks .photo-result:last-of-type img {
+    max-height: calc(var(--app-height, 100dvh) - 11.5rem);
   }
 }

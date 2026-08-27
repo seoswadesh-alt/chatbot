@@ -112,8 +112,11 @@
   const chatDrawerBody = document.getElementById("chat-drawer-body");
   const chatSessionTabs = document.getElementById("chat-session-tabs");
   const chatDeleteBtn = document.getElementById("chat-delete-btn");
+  const drawerTabChat = document.getElementById("drawer-tab-chat");
+  const drawerTabPhotos = document.getElementById("drawer-tab-photos");
   const purgeOldChatsBtn = document.getElementById("purge-old-chats-btn");
   let openChatUserId = "";
+  let drawerTab = "chat";
   const setUpiId = document.getElementById("set-upi-id");
   const setUpiName = document.getElementById("set-upi-name");
   const setTrialMinutes = document.getElementById("set-trial-minutes");
@@ -1658,6 +1661,7 @@
   async function openUserChat(userId) {
     if (!chatDrawer) return;
     openChatUserId = String(userId || "");
+    setDrawerTab("chat");
     chatDrawer.classList.remove("hidden");
     chatDrawer.setAttribute("aria-hidden", "false");
     chatDrawerTitle.textContent = "User " + userId;
@@ -1711,6 +1715,138 @@
     } catch (e) {
       chatDrawerMeta.textContent = "";
       chatDrawerBody.innerHTML = "<div class='empty'>Network error</div>";
+    }
+  }
+
+  function setDrawerTab(name) {
+    drawerTab = name === "photos" ? "photos" : "chat";
+    if (drawerTabChat) drawerTabChat.classList.toggle("active", drawerTab === "chat");
+    if (drawerTabPhotos) drawerTabPhotos.classList.toggle("active", drawerTab === "photos");
+    var kicker = document.querySelector(".chat-drawer-head .brand-kicker");
+    if (kicker) kicker.textContent = drawerTab === "photos" ? "User photos" : "User chat";
+    if (chatDeleteBtn) {
+      chatDeleteBtn.classList.toggle("hidden", drawerTab !== "chat" || !openChatUserId);
+    }
+    if (chatSessionTabs && drawerTab !== "chat") {
+      chatSessionTabs.classList.add("hidden");
+    }
+  }
+
+  function renderUserPhotos(data) {
+    const looks = (data && data.looks) || [];
+    const usage = (data && data.usage) || {};
+    chatDrawerMeta.textContent =
+      "Photos kept " +
+      (data.keepDays || 5) +
+      " days · " +
+      Number(usage.usedHour || 0) +
+      "/" +
+      Number(usage.cap || 25) +
+      " this hour · extra " +
+      Number(usage.bonus || 0) +
+      " · " +
+      looks.length +
+      " saved";
+    if (!looks.length) {
+      chatDrawerBody.innerHTML =
+        "<div class='empty'>No generated photos saved yet for this user.</div>";
+      return;
+    }
+    chatDrawerBody.innerHTML =
+      "<div class='admin-photo-grid'>" +
+      looks
+        .map(function (look) {
+          const when = look.createdAt
+            ? new Date(look.createdAt).toLocaleString()
+            : "";
+          const prompt = look.prompt || look.caption || "(no prompt)";
+          const src = String(look.url || "");
+          return (
+            "<figure class='admin-photo-look'>" +
+            (src
+              ? "<img src='" +
+                escapeHtml(src) +
+                "' alt='' data-open-src='" +
+                escapeHtml(src) +
+                "'>"
+              : "") +
+            "<figcaption>" +
+            "<span class='who'>" +
+            (look.iterate ? "Edit" : "New photo") +
+            (when ? " · " + escapeHtml(when) : "") +
+            "</span>" +
+            "<p>" +
+            escapeHtml(prompt) +
+            "</p>" +
+            "</figcaption></figure>"
+          );
+        })
+        .join("") +
+      "</div>";
+  }
+
+  async function openUserPhotos(userId) {
+    if (!chatDrawer) return;
+    openChatUserId = String(userId || "");
+    setDrawerTab("photos");
+    chatDrawer.classList.remove("hidden");
+    chatDrawer.setAttribute("aria-hidden", "false");
+    chatDrawerTitle.textContent = "User " + userId;
+    chatDrawerMeta.textContent = "Loading photos…";
+    chatDrawerBody.innerHTML = "<p class='meta'>Loading…</p>";
+    if (chatSessionTabs) {
+      chatSessionTabs.classList.add("hidden");
+      chatSessionTabs.innerHTML = "";
+    }
+    try {
+      const res = await fetch(
+        "/api/admin/users/" + encodeURIComponent(userId) + "/photos",
+        { headers: authHeaders() }
+      );
+      const data = await res.json().catch(function () {
+        return {};
+      });
+      if (!res.ok) {
+        if (handleAuthFail(res)) return;
+        chatDrawerMeta.textContent = "";
+        chatDrawerBody.innerHTML =
+          "<div class='empty'>" +
+          escapeHtml(data.error || "Could not load photos") +
+          "</div>";
+        return;
+      }
+      renderUserPhotos(data);
+    } catch (e) {
+      chatDrawerMeta.textContent = "";
+      chatDrawerBody.innerHTML = "<div class='empty'>Network error</div>";
+    }
+  }
+
+  async function adjustPhotoCredits(userId, n) {
+    const res = await fetch(
+      "/api/admin/users/" + encodeURIComponent(userId) + "/photo-credits",
+      {
+        method: "POST",
+        headers: authHeaders(),
+        body: JSON.stringify({ add: n }),
+      }
+    );
+    const data = await res.json().catch(function () {
+      return {};
+    });
+    if (!res.ok) {
+      if (handleAuthFail(res)) return;
+      toast(data.error || "Failed", "err");
+      return;
+    }
+    const extra =
+      data.usage && data.usage.bonus != null
+        ? data.usage.bonus + " extra looks now"
+        : "updated";
+    toast("Photo credits: " + extra, "ok");
+    await refreshAll();
+    if (openChatUserId === String(userId) && drawerTab === "photos") {
+      openUserPhotos(userId);
     }
   }
 
@@ -1830,6 +1966,24 @@
                   Number(u.storyModeFreeLimit || 2) +
                   " free)"),
           });
+        }
+        if (Number(u.photoLookCount || 0) > 0 || Number(u.photoBonus || 0) > 0) {
+          detailChips.push({
+            key: "photos",
+            text:
+              "Photos " +
+              Number(u.photoUsedHour || 0) +
+              "/" +
+              Number(u.photoCap || 25) +
+              "h" +
+              (Number(u.photoLookCount || 0)
+                ? " · " + Number(u.photoLookCount) + " saved"
+                : "") +
+              (Number(u.photoBonus || 0) ? " · +" + Number(u.photoBonus) + " extra" : ""),
+          });
+        }
+        if (u.photoCreditRequested) {
+          detailChips.push({ key: "photo-ask", text: "Asked extra photos" });
         }
         const tileFactChips = [
           insight.pending
@@ -2025,6 +2179,20 @@
           "View chat · " +
           escapeHtml(chatLabel) +
           "</button>" +
+          "<button type='button' class='user-card-chat' data-view-photos='" +
+          uid +
+          "'>" +
+          "View photos · " +
+          (Number(u.photoLookCount || 0)
+            ? Number(u.photoLookCount) + " saved"
+            : "none yet") +
+          " · " +
+          Number(u.photoUsedHour || 0) +
+          "/" +
+          Number(u.photoCap || 25) +
+          " this hour" +
+          (Number(u.photoBonus || 0) ? " · +" + Number(u.photoBonus) + " extra" : "") +
+          "</button>" +
           "<div class='user-card-actions'>" +
           "<div class='uc-action-group'>" +
           "<p class='uc-action-label'>Add access</p>" +
@@ -2064,6 +2232,20 @@
           "<button type='button' class='btn-danger btn-sm' title='Reset time to zero' data-clear-hours='" +
           uid +
           "'>Clear</button>" +
+          "</div>" +
+          "</div>" +
+          "<div class='uc-action-group'>" +
+          "<p class='uc-action-label'>Photo looks (25/hour + extra)</p>" +
+          "<div class='uc-action-row uc-action-row-add'>" +
+          "<button type='button' class='btn-ghost btn-sm' data-add-photos='" +
+          uid +
+          "' data-photo-n='5'>+5 looks</button>" +
+          "<button type='button' class='btn btn-sm' data-add-photos='" +
+          uid +
+          "' data-photo-n='10'>+10 looks</button>" +
+          "<button type='button' class='btn-ghost btn-sm' data-add-photos='" +
+          uid +
+          "' data-photo-n='25'>+25 looks</button>" +
           "</div>" +
           "</div>" +
           "<div class='uc-action-group'>" +
@@ -2322,7 +2504,7 @@
 
     const t = e.target.closest
       ? e.target.closest(
-          "[data-view-chat], [data-msg-user], [data-add-hours], [data-add-hours5], [data-add-hours-10m], [data-add-hours-30m], [data-add-hours-day], [data-add-hours-month], [data-sub-hours], [data-sub-hours-m], [data-set-hours], [data-clear-hours], [data-reset-pin], [data-migrate], [data-delete-chats], [data-unlink-device], [data-delete-user]"
+          "[data-view-chat], [data-view-photos], [data-add-photos], [data-msg-user], [data-add-hours], [data-add-hours5], [data-add-hours-10m], [data-add-hours-30m], [data-add-hours-day], [data-add-hours-month], [data-sub-hours], [data-sub-hours-m], [data-set-hours], [data-clear-hours], [data-reset-pin], [data-migrate], [data-delete-chats], [data-unlink-device], [data-delete-user]"
         )
       : e.target;
     if (!t) return;
@@ -2330,6 +2512,16 @@
     const viewChat = t.getAttribute("data-view-chat");
     if (viewChat) {
       openUserChat(viewChat);
+      return;
+    }
+    const viewPhotos = t.getAttribute("data-view-photos");
+    if (viewPhotos) {
+      openUserPhotos(viewPhotos);
+      return;
+    }
+    if (t.getAttribute("data-add-photos")) {
+      const n = Number(t.getAttribute("data-photo-n") || 10);
+      adjustPhotoCredits(t.getAttribute("data-add-photos"), n);
       return;
     }
     const msgUser = t.getAttribute("data-msg-user");
@@ -2850,7 +3042,9 @@
             : escapeHtml(t.status || "open");
         const leadChip = t.payLead
           ? "<span class='badge pending' style='margin-left:6px'>discount?</span>"
-          : t.payFunnel && t.payFunnel.abandoned
+          : t.photoCredit
+            ? "<span class='badge pending' style='margin-left:6px'>photo credits</span>"
+            : t.payFunnel && t.payFunnel.abandoned
             ? "<span class='badge' style='margin-left:6px'>left pay @" +
               escapeHtml(t.payFunnel.stage || "?") +
               "</span>"
@@ -3837,6 +4031,18 @@
   if (chatDrawer) {
     chatDrawer.addEventListener("click", function (e) {
       if (e.target.getAttribute("data-close-chat") !== null) closeChatDrawer();
+      const tab = e.target.closest && e.target.closest("[data-drawer-tab]");
+      if (tab && openChatUserId) {
+        const name = tab.getAttribute("data-drawer-tab");
+        if (name === "photos") openUserPhotos(openChatUserId);
+        else openUserChat(openChatUserId);
+        return;
+      }
+      const img = e.target.closest && e.target.closest("img[data-open-src]");
+      if (img) {
+        const src = img.getAttribute("data-open-src");
+        if (src) window.open(src, "_blank", "noopener");
+      }
     });
     document.addEventListener("keydown", function (e) {
       if (e.key === "Escape") closeChatDrawer();
