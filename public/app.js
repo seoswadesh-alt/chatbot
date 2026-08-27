@@ -485,28 +485,69 @@
   let rpSetup = "";
   let setupLocked = false;
   let authToken = localStorage.getItem("userToken") || "";
+  var photoBlobUrls = {};
 
-  function syncPhotoAuthCookie(token) {
-    var t = token != null ? String(token) : String(authToken || "");
+  function clearPhotoAuthCookie() {
     var secure = window.location.protocol === "https:" ? "; Secure" : "";
-    if (!t) {
-      document.cookie = "dc_img=; Path=/; SameSite=Lax; Max-Age=0" + secure;
+    document.cookie = "dc_img=; Path=/; SameSite=Lax; Max-Age=0" + secure;
+  }
+  clearPhotoAuthCookie();
+
+  function generatedPhotoName(url) {
+    var raw = String(url || "");
+    var m = raw.match(
+      /\/(?:generated|api\/photos\/(?:file|mine))\/([df][a-f0-9]+\.(?:jpg|jpeg|png|webp))/i
+    );
+    return m ? m[1] : "";
+  }
+
+  function revokePhotoBlobs() {
+    Object.keys(photoBlobUrls).forEach(function (key) {
+      try {
+        URL.revokeObjectURL(photoBlobUrls[key]);
+      } catch (e) {}
+    });
+    photoBlobUrls = {};
+  }
+
+  function loadPhotoBlob(url) {
+    var name = generatedPhotoName(url);
+    if (!name) return Promise.resolve(url);
+    if (photoBlobUrls[name]) return Promise.resolve(photoBlobUrls[name]);
+    if (!authToken) return Promise.resolve("");
+    return fetch("/api/photos/mine/" + encodeURIComponent(name), {
+      headers: { Authorization: "Bearer " + authToken },
+      cache: "no-store",
+    })
+      .then(function (res) {
+        if (!res.ok) return null;
+        return res.blob();
+      })
+      .then(function (blob) {
+        if (!blob) return "";
+        var blobUrl = URL.createObjectURL(blob);
+        photoBlobUrls[name] = blobUrl;
+        return blobUrl;
+      })
+      .catch(function () {
+        return "";
+      });
+  }
+
+  function setPhotoElSrc(el, url) {
+    if (!el) return;
+    if (!url) {
+      el.removeAttribute("src");
       return;
     }
-    document.cookie =
-      "dc_img=" +
-      encodeURIComponent(t) +
-      "; Path=/; SameSite=Lax; Max-Age=2592000" +
-      secure;
+    if (!generatedPhotoName(url)) {
+      el.src = url;
+      return;
+    }
+    loadPhotoBlob(url).then(function (src) {
+      if (src) el.src = src;
+    });
   }
-
-  function photoSrc(url) {
-    var raw = String(url || "");
-    var m = raw.match(/\/generated\/([df][a-f0-9]+\.(?:jpg|jpeg|png|webp))/i);
-    if (!m) return raw;
-    return "/api/photos/file/" + m[1];
-  }
-  syncPhotoAuthCookie();
   let currentUser = null;
   let localHours = 0;
   let localSyncedAt = 0;
@@ -1053,7 +1094,6 @@
     if (!data || !data.token || !data.user) return false;
     authToken = data.token;
     localStorage.setItem("userToken", authToken);
-    syncPhotoAuthCookie(authToken);
     localStorage.removeItem("adminToken");
     currentUser = data.user;
     if (currentUser && currentUser.userId) {
@@ -1795,7 +1835,8 @@
     hideUnlockNotice();
     authToken = "";
     currentUser = null;
-    syncPhotoAuthCookie("");
+    clearPhotoAuthCookie();
+    revokePhotoBlobs();
     localHours = 0;
     pendingRegisterSession = null;
     localStorage.removeItem("userToken");
@@ -3100,9 +3141,10 @@
     const bubble = document.createElement("div");
     bubble.className = "bubble image-bubble " + type;
     const img = document.createElement("img");
-    img.src = photoSrc(url);
+    img.src = "";
     img.alt = caption || "Look";
     img.className = "dress-zoom";
+    setPhotoElSrc(img, url);
     img.addEventListener("click", function () {
       openPhotoLightbox(url, caption);
     });
@@ -3138,7 +3180,8 @@
 
   function openPhotoLightbox(url, caption) {
     if (!photoLightbox || !photoLightboxImg || !url) return;
-    photoLightboxImg.src = photoSrc(url);
+    photoLightboxImg.removeAttribute("src");
+    setPhotoElSrc(photoLightboxImg, url);
     if (photoLightboxCap) photoLightboxCap.textContent = caption || "Tap outside to close";
     photoLightbox.classList.remove("hidden");
     photoLightbox.setAttribute("aria-hidden", "false");
@@ -3248,7 +3291,7 @@
       if (dressUploadText) dressUploadText.textContent = "Photo";
       return;
     }
-    dressPreviewEl.src = photoSrc(url);
+    setPhotoElSrc(dressPreviewEl, url);
     dressPreviewEl.classList.remove("hidden");
     if (dressUploadLabel) dressUploadLabel.classList.add("has-file");
     if (dressUploadText) dressUploadText.textContent = label || "Switch";
@@ -3345,8 +3388,9 @@
         wrap.className = "photo-result";
         if (currentUrl && item.url === currentUrl) wrap.classList.add("is-current");
         var img = document.createElement("img");
-        img.src = photoSrc(item.url);
+        img.src = "";
         img.alt = item.caption || "Look";
+        setPhotoElSrc(img, item.url);
         img.addEventListener("click", function () {
           openPhotoLightbox(item.url, item.caption);
         });
@@ -6485,7 +6529,7 @@
         if (data.role === "admin" && data.token) {
           localStorage.setItem("adminToken", data.token);
           localStorage.removeItem("userToken");
-          syncPhotoAuthCookie(data.token);
+          clearPhotoAuthCookie();
           window.location.href = "/admin.html";
           return;
         }

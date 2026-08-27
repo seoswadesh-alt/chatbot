@@ -531,7 +531,13 @@ function requestAuthToken(req) {
   );
 }
 
-function sendPrivateGenerated(req, res) {
+function generatedNameFromReq(req) {
+  return path.basename(
+    String((req.params && req.params.name) || req.path || "").replace(/\\/g, "/")
+  );
+}
+
+function lockGeneratedHeaders(res) {
   res.setHeader(
     "X-Robots-Tag",
     "noindex, nofollow, noarchive, nosnippet, noimageindex"
@@ -541,21 +547,11 @@ function sendPrivateGenerated(req, res) {
   res.setHeader("Referrer-Policy", "no-referrer");
   res.setHeader("X-Content-Type-Options", "nosniff");
   res.setHeader("Cross-Origin-Resource-Policy", "same-origin");
-  if (req.method !== "GET" && req.method !== "HEAD") {
-    return res.status(405).end();
-  }
-  const name = path.basename(
-    String((req.params && req.params.name) || req.path || "").replace(/\\/g, "/")
-  );
-  if (!imageDress.isGeneratedName(name)) return res.status(404).end();
-  const rec = billing.getTokenRecord(requestAuthToken(req));
-  if (!rec) return res.status(404).end();
-  if (rec.role !== "admin" && !imageDress.userOwnsGenerated(rec.userId, name)) {
-    return res.status(404).end();
-  }
-  const full = imageDress.generatedFilePath(name);
+}
+
+function sendGeneratedDisk(res, full, method) {
   if (!full || !fs.existsSync(full)) return res.status(404).end();
-  if (req.method === "HEAD") return res.status(200).end();
+  if (method === "HEAD") return res.status(200).end();
   return res.sendFile(full, {
     maxAge: 0,
     lastModified: false,
@@ -566,9 +562,44 @@ function sendPrivateGenerated(req, res) {
   });
 }
 
-app.use("/generated", sendPrivateGenerated);
-app.get("/api/photos/file/:name", sendPrivateGenerated);
-app.head("/api/photos/file/:name", sendPrivateGenerated);
+function sendAdminGenerated(req, res) {
+  lockGeneratedHeaders(res);
+  if (req.method !== "GET" && req.method !== "HEAD") {
+    return res.status(405).end();
+  }
+  const name = generatedNameFromReq(req);
+  if (!imageDress.isGeneratedName(name)) return res.status(404).end();
+  const rec = billing.getTokenRecord(requestAuthToken(req));
+  if (!rec || rec.role !== "admin") return res.status(404).end();
+  return sendGeneratedDisk(
+    res,
+    imageDress.generatedFilePath(name),
+    req.method
+  );
+}
+
+function sendOwnerGenerated(req, res) {
+  lockGeneratedHeaders(res);
+  if (req.method !== "GET" && req.method !== "HEAD") {
+    return res.status(405).end();
+  }
+  const name = generatedNameFromReq(req);
+  if (!imageDress.isGeneratedName(name)) return res.status(404).end();
+  const rec = billing.getTokenRecord(bearerToken(req));
+  if (!rec || rec.role !== "user") return res.status(404).end();
+  if (!imageDress.userOwnsGenerated(rec.userId, name)) return res.status(404).end();
+  return sendGeneratedDisk(
+    res,
+    imageDress.generatedFilePath(name),
+    req.method
+  );
+}
+
+app.use("/generated", sendAdminGenerated);
+app.get("/api/photos/file/:name", sendAdminGenerated);
+app.head("/api/photos/file/:name", sendAdminGenerated);
+app.get("/api/photos/mine/:name", sendOwnerGenerated);
+app.head("/api/photos/mine/:name", sendOwnerGenerated);
 
 app.use(express.static(PUBLIC_DIR));
 
