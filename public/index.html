@@ -238,6 +238,7 @@
         </div>
       </header>
 
+      <div id="chat-pane" class="app-pane">
       <main id="messages" class="messages" aria-live="polite"></main>
       <button type="button" id="jump-latest" class="jump-latest hidden" aria-label="Jump to latest">
         ↓ New
@@ -395,6 +396,74 @@
           <span class="send-spinner hidden" aria-hidden="true"></span>
         </button>
       </form>
+      </div>
+
+      <div id="photo-pane" class="app-pane hidden" aria-hidden="true">
+        <div class="photo-toolbar">
+          <div class="photo-toolbar-copy">
+            <p class="photo-kicker">Photos</p>
+            <p class="photo-lead">Type like chat — it understands the next change.</p>
+          </div>
+          <button type="button" id="photo-new-btn" class="photo-new-btn">New photo</button>
+        </div>
+        <div id="photo-thread" class="photo-thread" aria-live="polite"></div>
+        <div class="photo-dock">
+          <form id="photo-form" class="photo-composer">
+            <label class="photo-pick" id="dress-upload-label" title="Upload a photo">
+              <input id="dress-file" type="file" accept="image/*" />
+              <img id="dress-preview" class="photo-thumb hidden" alt="" />
+              <span id="dress-upload-text">Photo</span>
+            </label>
+            <input
+              id="dress-extra"
+              type="text"
+              maxlength="500"
+              placeholder="Tell it what you want…"
+              autocomplete="off"
+            />
+            <button type="submit" id="dress-go" class="auth-btn photo-go">Generate</button>
+          </form>
+          <div class="photo-foot">
+            <div class="photo-legal">
+              <label class="dress-check">
+                <input id="dress-owns" type="checkbox" />
+                <span>I own this photo</span>
+              </label>
+              <label class="dress-check">
+                <input id="dress-adult" type="checkbox" />
+                <span>Everyone is 18+</span>
+              </label>
+            </div>
+            <details class="dress-more">
+              <summary>More options</summary>
+              <p class="dress-ask">Body type</p>
+              <div id="dress-body-chips" class="wiz-chips dress-chips"></div>
+              <p class="dress-ask">Exact figure</p>
+              <div id="dress-figure-chips" class="wiz-chips dress-chips"></div>
+              <p class="dress-ask">Skin / body tone</p>
+              <div id="dress-tone-chips" class="wiz-chips dress-chips"></div>
+              <p class="dress-ask">Clothes</p>
+              <div id="dress-chips" class="wiz-chips dress-chips"></div>
+              <label class="full">
+                Or type clothes
+                <input
+                  id="dress-custom"
+                  type="text"
+                  maxlength="180"
+                  placeholder="e.g. wet white nighty, open blouse…"
+                  autocomplete="off"
+                />
+              </label>
+            </details>
+            <p id="dress-status" class="dress-status" aria-live="polite"></p>
+          </div>
+        </div>
+      </div>
+
+      <nav id="app-tabs" class="app-tabs hidden" aria-label="App sections">
+        <button type="button" id="tab-chat" class="app-tab is-on">Chat</button>
+        <button type="button" id="tab-photos" class="app-tab">Photos</button>
+      </nav>
 
       <!-- Shared scene form (moved between modal ↔ sidebar) -->
       <div id="scene-form" class="setup-grid" hidden>
@@ -821,6 +890,14 @@
           Got it — Start chatting
         </button>
       </div>
+    </div>
+
+    <div id="photo-lightbox" class="photo-lightbox hidden" aria-hidden="true">
+      <button type="button" id="photo-lightbox-close" class="photo-lightbox-close" aria-label="Close">
+        ✕
+      </button>
+      <img id="photo-lightbox-img" alt="Full photo" />
+      <p id="photo-lightbox-cap" class="photo-lightbox-cap"></p>
     </div>
 
     <div id="toast-host" aria-live="polite"></div>

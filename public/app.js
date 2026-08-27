@@ -8,6 +8,13 @@
       const res = await fetch("/api/client-config", { cache: "no-store" });
       if (!res.ok) return;
       const data = await res.json();
+      if (typeof data.imageDressEnabled === "boolean") {
+        window.__imageDressEnabled = data.imageDressEnabled;
+        window.__imageDressPaidOnly = !!data.imageDressPaidOnly;
+        if (typeof window.__paintDressUi === "function") {
+          window.__paintDressUi();
+        }
+      }
       const key = String(data.cacheKey || "");
       if (!key) return;
       let prev = "";
@@ -228,6 +235,75 @@
   const soundToggle = document.getElementById("sound-toggle");
   const sendIcon = sendBtn && sendBtn.querySelector(".send-icon");
   const sendSpinner = sendBtn && sendBtn.querySelector(".send-spinner");
+  const dressGoBtn = document.getElementById("dress-go");
+  const dressFileEl = document.getElementById("dress-file");
+  const dressPreviewEl = document.getElementById("dress-preview");
+  const dressUploadText = document.getElementById("dress-upload-text");
+  const dressUploadLabel = document.getElementById("dress-upload-label");
+  const dressChipsEl = document.getElementById("dress-chips");
+  const dressBodyChipsEl = document.getElementById("dress-body-chips");
+  const dressFigureChipsEl = document.getElementById("dress-figure-chips");
+  const dressToneChipsEl = document.getElementById("dress-tone-chips");
+  const dressCustomEl = document.getElementById("dress-custom");
+  const dressExtraEl = document.getElementById("dress-extra");
+  const dressOwnsEl = document.getElementById("dress-owns");
+  const dressAdultEl = document.getElementById("dress-adult");
+  const dressStatusEl = document.getElementById("dress-status");
+  const chatPane = document.getElementById("chat-pane");
+  const photoPane = document.getElementById("photo-pane");
+  const photoThreadEl = document.getElementById("photo-thread");
+  const photoForm = document.getElementById("photo-form");
+  const photoNewBtn = document.getElementById("photo-new-btn");
+  const appTabs = document.getElementById("app-tabs");
+  const tabChatBtn = document.getElementById("tab-chat");
+  const tabPhotosBtn = document.getElementById("tab-photos");
+  const DRESS_CLOTHES = [
+    { id: "saree", label: "Saree" },
+    { id: "nighty", label: "Nighty" },
+    { id: "jeans", label: "Jeans + top" },
+    { id: "salwar", label: "Salwar suit" },
+    { id: "lehenga", label: "Lehenga" },
+    { id: "western", label: "Western dress" },
+    { id: "bikini", label: "Bikini" },
+    { id: "lingerie", label: "Lingerie" },
+    { id: "wet", label: "Wet look" },
+    { id: "seethru", label: "See-through" },
+    { id: "nude", label: "Nude" },
+  ];
+  const DRESS_BODIES = [
+    { id: "keep", label: "As in photo" },
+    { id: "skinny", label: "Skinny" },
+    { id: "slim", label: "Slim" },
+    { id: "average", label: "Average" },
+    { id: "healthy", label: "Healthy mid-size" },
+    { id: "curvy", label: "Soft curvy" },
+    { id: "plus", label: "Plus-size curvy" },
+  ];
+  const DRESS_FIGURES = [
+    { id: "natural", label: "As in photo" },
+    { id: "petite", label: "Petite" },
+    { id: "hourglass", label: "Hourglass" },
+    { id: "pear", label: "Heavy hips" },
+    { id: "apple", label: "Soft belly" },
+    { id: "athletic", label: "Athletic" },
+  ];
+  const DRESS_TONES = [
+    { id: "photo", label: "Same as photo" },
+    { id: "fair", label: "Fair" },
+    { id: "wheatish", label: "Wheatish" },
+    { id: "brown", label: "Brown" },
+    { id: "dark", label: "Dark" },
+  ];
+  let dressClothesId = "keep";
+  let dressBodyId = "keep";
+  let dressFigureId = "natural";
+  let dressToneId = "photo";
+  let dressLastDataUrl = "";
+  let dressBusy = false;
+  let lastDress = null;
+  let forceNewPhoto = true;
+  let photoHistory = [];
+  let appTab = "chat";
 
   const SAVED_ID_KEY = "savedUserId";
   const SAVED_PIN_KEY = "savedUserPin";
@@ -603,6 +679,7 @@
       form: collectFormState(),
       selectedCharacter: selectedCharacter,
       history: history.slice(-80),
+      lastDress: lastDress || null,
     };
   }
 
@@ -655,8 +732,23 @@
   function renderHistoryBubbles() {
     messagesEl.innerHTML = "";
     history.forEach(function (m) {
-      if (!m || !m.content) return;
+      if (!m) return;
+      if (m.imageUrl) {
+        addImageBubble(
+          m.imageUrl,
+          m.caption || m.content || "",
+          m.role === "user" ? "outgoing" : "incoming",
+          false
+        );
+        return;
+      }
+      if (!m.content) return;
       if (isSetupMetaMessage(m.content)) return;
+      if (/^\[Dress edit\]/i.test(m.content)) {
+        addBubble(String(m.content).replace(/^\[Dress edit\]\s*/i, ""), "outgoing");
+        return;
+      }
+      if (/^\[Dress photo/i.test(m.content)) return;
       if (m.role === "user") addBubble(m.content, "outgoing");
       else if (m.role === "assistant") addBubble(m.content, "incoming");
     });
@@ -671,6 +763,8 @@
       rpSetup = session.rpSetup || buildRpSetupText();
       setupLocked = true;
       history = Array.isArray(session.history) ? session.history.slice() : [];
+      lastDress = session.lastDress && session.lastDress.url ? session.lastDress : null;
+      if (!lastDress) restoreLastDressFromHistory();
       renderHistoryBubbles();
       syncTitle();
       closeSetupModal();
@@ -1716,6 +1810,7 @@
     paintStoryModeUi();
     paintHelpPending();
     paintStoryImportUi();
+    paintDressUi();
     return true;
   }
 
@@ -2972,6 +3067,482 @@
     messagesEl.appendChild(bubble);
     scrollMessagesToEnd(type === "outgoing" || type === "error");
     if (type === "incoming") playReplyFeedback();
+  }
+
+  function addImageBubble(url, caption, type, showAgain) {
+    const bubble = document.createElement("div");
+    bubble.className = "bubble image-bubble " + type;
+    const img = document.createElement("img");
+    img.src = url;
+    img.alt = caption || "Look";
+    img.className = "dress-zoom";
+    img.addEventListener("click", function () {
+      openPhotoLightbox(url, caption);
+    });
+    bubble.appendChild(img);
+    if (caption) {
+      const cap = document.createElement("span");
+      cap.className = "caption";
+      cap.textContent = caption;
+      bubble.appendChild(cap);
+    }
+    const meta = document.createElement("span");
+    meta.className = "meta";
+    meta.textContent = timeNow();
+    bubble.appendChild(meta);
+    if (showAgain) {
+      const again = document.createElement("button");
+      again.type = "button";
+      again.className = "dress-again-btn";
+      again.textContent = "Change this photo";
+      again.addEventListener("click", function () {
+        switchAppTab("photos");
+      });
+      bubble.appendChild(again);
+    }
+    messagesEl.appendChild(bubble);
+    scrollMessagesToEnd(true);
+  }
+
+  const photoLightbox = document.getElementById("photo-lightbox");
+  const photoLightboxImg = document.getElementById("photo-lightbox-img");
+  const photoLightboxCap = document.getElementById("photo-lightbox-cap");
+  const photoLightboxClose = document.getElementById("photo-lightbox-close");
+
+  function openPhotoLightbox(url, caption) {
+    if (!photoLightbox || !photoLightboxImg || !url) return;
+    photoLightboxImg.src = url;
+    if (photoLightboxCap) photoLightboxCap.textContent = caption || "Tap outside to close";
+    photoLightbox.classList.remove("hidden");
+    photoLightbox.setAttribute("aria-hidden", "false");
+  }
+
+  function closePhotoLightbox() {
+    if (!photoLightbox) return;
+    photoLightbox.classList.add("hidden");
+    photoLightbox.setAttribute("aria-hidden", "true");
+    if (photoLightboxImg) photoLightboxImg.removeAttribute("src");
+  }
+
+  if (photoLightbox) {
+    photoLightbox.addEventListener("click", function (e) {
+      if (e.target === photoLightbox) closePhotoLightbox();
+    });
+  }
+  if (photoLightboxClose) {
+    photoLightboxClose.addEventListener("click", closePhotoLightbox);
+  }
+  document.addEventListener("keydown", function (e) {
+    if (e.key === "Escape" && photoLightbox && !photoLightbox.classList.contains("hidden")) {
+      closePhotoLightbox();
+    }
+  });
+
+  function restoreLastDressFromHistory() {
+    for (var i = history.length - 1; i >= 0; i--) {
+      if (history[i] && history[i].imageUrl) {
+        lastDress = {
+          url: history[i].imageUrl,
+          bodyId: "keep",
+          figureId: dressFigureId || "natural",
+          toneId: dressToneId || "photo",
+          clothesId: "keep",
+        };
+        return;
+      }
+    }
+  }
+
+  function rememberDressLook(data) {
+    lastDress = {
+      url: data.url,
+      identityUrl: data.identityUrl || (lastDress && lastDress.identityUrl) || "",
+      bodyId: "keep",
+      figureId: dressFigureId || "natural",
+      toneId: "photo",
+      clothesId: data.clothesId || dressClothesId || "keep",
+    };
+    forceNewPhoto = false;
+    paintPhotoComposer();
+    if (dressExtraEl) {
+      dressExtraEl.value = "";
+      dressExtraEl.focus();
+    }
+  }
+
+  function photoStoreKey() {
+    return "photoThread_v1_" + (currentUserId() || "anon");
+  }
+
+  function savePhotoHistory() {
+    try {
+      localStorage.setItem(
+        photoStoreKey(),
+        JSON.stringify({ lastDress: lastDress, items: photoHistory.slice(-40) })
+      );
+    } catch (e) {}
+  }
+
+  function lastPhotoUrl() {
+    for (var i = photoHistory.length - 1; i >= 0; i--) {
+      if (photoHistory[i] && photoHistory[i].url) return photoHistory[i].url;
+    }
+    return "";
+  }
+
+  function ensureLastDressFromThread() {
+    if (lastDress && lastDress.url) {
+      forceNewPhoto = false;
+      return;
+    }
+    var url = lastPhotoUrl();
+    if (!url) return;
+    lastDress = {
+      url: url,
+      identityUrl: "",
+      bodyId: "keep",
+      figureId: "natural",
+      toneId: "photo",
+      clothesId: "keep",
+    };
+    forceNewPhoto = false;
+  }
+
+  function loadPhotoHistory() {
+    try {
+      var raw = localStorage.getItem(photoStoreKey());
+      if (!raw) return;
+      var data = JSON.parse(raw);
+      if (data && Array.isArray(data.items)) photoHistory = data.items;
+      if (data && data.lastDress && data.lastDress.url) lastDress = data.lastDress;
+    } catch (e) {}
+    ensureLastDressFromThread();
+  }
+
+  function renderPhotoThread() {
+    if (!photoThreadEl) return;
+    photoThreadEl.innerHTML = "";
+    if (!photoHistory.length) {
+      var empty = document.createElement("p");
+      empty.className = "photo-empty";
+      empty.textContent =
+        "Upload a photo, write what you want, tap Generate.";
+      photoThreadEl.appendChild(empty);
+      return;
+    }
+    photoHistory.forEach(function (item) {
+      if (!item) return;
+      if (item.role === "user") {
+        var p = document.createElement("div");
+        p.className = "photo-prompt-bubble";
+        p.textContent = item.text || "";
+        photoThreadEl.appendChild(p);
+        return;
+      }
+      if (item.url) {
+        var wrap = document.createElement("div");
+        wrap.className = "photo-result";
+        var img = document.createElement("img");
+        img.src = item.url;
+        img.alt = item.caption || "Look";
+        img.addEventListener("click", function () {
+          openPhotoLightbox(item.url, item.caption);
+        });
+        wrap.appendChild(img);
+        photoThreadEl.appendChild(wrap);
+      }
+    });
+    photoThreadEl.scrollTop = photoThreadEl.scrollHeight;
+  }
+
+  function addPhotoTurn(prompt, url, caption) {
+    if (prompt) photoHistory.push({ role: "user", text: prompt });
+    if (url) photoHistory.push({ role: "ai", url: url, caption: caption || "" });
+    renderPhotoThread();
+    savePhotoHistory();
+  }
+
+  function paintPhotoComposer() {
+    var editing = !!(lastDress && lastDress.url);
+    if (dressExtraEl) {
+      dressExtraEl.placeholder = editing
+        ? "Chat the next change…"
+        : "Tell it what you want…";
+    }
+    if (dressGoBtn) dressGoBtn.textContent = editing ? "Apply" : "Generate";
+  }
+
+  function switchAppTab(name) {
+    appTab = name === "photos" ? "photos" : "chat";
+    var photos = appTab === "photos";
+    if (chatPane) {
+      chatPane.classList.toggle("hidden", photos);
+      chatPane.setAttribute("aria-hidden", photos ? "true" : "false");
+    }
+    if (photoPane) {
+      photoPane.classList.toggle("hidden", !photos);
+      photoPane.setAttribute("aria-hidden", photos ? "false" : "true");
+    }
+    if (tabChatBtn) tabChatBtn.classList.toggle("is-on", !photos);
+    if (tabPhotosBtn) tabPhotosBtn.classList.toggle("is-on", photos);
+    if (photos) {
+      fillDressChips();
+      loadPhotoHistory();
+      renderPhotoThread();
+      paintPhotoComposer();
+      if (dressExtraEl) dressExtraEl.focus();
+    }
+  }
+
+  function paintDressUi() {
+    const on = window.__imageDressEnabled === true;
+    if (appTabs) appTabs.classList.toggle("hidden", !on);
+    if (!on && appTab === "photos") switchAppTab("chat");
+  }
+  window.__paintDressUi = paintDressUi;
+  paintDressUi();
+
+  function setDressStatus(text, kind) {
+    if (!dressStatusEl) return;
+    dressStatusEl.textContent = text || "";
+    dressStatusEl.classList.remove("is-err", "is-ok");
+    if (kind) dressStatusEl.classList.add("is-" + kind);
+  }
+
+  function fillChipGroup(el, items, selectedId, onPick) {
+    if (!el) return;
+    if (!el.childNodes.length) {
+      items.forEach(function (c) {
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "wiz-chip" + (c.id === "nude" ? " is-nude" : "");
+        btn.textContent = c.label;
+        btn.setAttribute("data-chip-id", c.id);
+        btn.addEventListener("click", function () {
+          onPick(c.id);
+          Array.prototype.forEach.call(el.querySelectorAll(".wiz-chip"), function (node) {
+            node.classList.toggle(
+              "active",
+              node.getAttribute("data-chip-id") === c.id
+            );
+          });
+        });
+        el.appendChild(btn);
+      });
+    }
+    Array.prototype.forEach.call(el.querySelectorAll(".wiz-chip"), function (node) {
+      node.classList.toggle(
+        "active",
+        node.getAttribute("data-chip-id") === selectedId
+      );
+    });
+  }
+
+  function fillDressChips() {
+    fillChipGroup(dressBodyChipsEl, DRESS_BODIES, dressBodyId, function (id) {
+      dressBodyId = id;
+    });
+    fillChipGroup(dressFigureChipsEl, DRESS_FIGURES, dressFigureId, function (id) {
+      dressFigureId = id;
+    });
+    fillChipGroup(dressToneChipsEl, DRESS_TONES, dressToneId, function (id) {
+      dressToneId = id;
+    });
+    fillChipGroup(dressChipsEl, DRESS_CLOTHES, dressClothesId, function (id) {
+      dressClothesId = id;
+    });
+  }
+
+  function openDressSheet() {
+    switchAppTab("photos");
+  }
+
+  function closeDressSheet() {}
+
+  function compressDressImage(file) {
+    return new Promise(function (resolve) {
+      if (!file || !/^image\//.test(file.type)) {
+        resolve(null);
+        return;
+      }
+      const img = new Image();
+      const url = URL.createObjectURL(file);
+      img.onload = function () {
+        const maxW = 1536;
+        const scale = Math.min(1, maxW / Math.max(img.width, img.height));
+        const canvas = document.createElement("canvas");
+        canvas.width = Math.max(1, Math.round(img.width * scale));
+        canvas.height = Math.max(1, Math.round(img.height * scale));
+        const ctx = canvas.getContext("2d");
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+        URL.revokeObjectURL(url);
+        resolve(canvas.toDataURL("image/jpeg", 0.88));
+      };
+      img.onerror = function () {
+        URL.revokeObjectURL(url);
+        fileToBase64(file).then(resolve).catch(function () {
+          resolve(null);
+        });
+      };
+      img.src = url;
+    });
+  }
+
+  async function runDressGenerate() {
+    if (dressBusy) return;
+    ensureLastDressFromThread();
+    const usePrev = !!(lastDress && lastDress.url);
+    paintPhotoComposer();
+    if (!dressLastDataUrl && !usePrev) {
+      setDressStatus("Upload a photo first", "err");
+      return;
+    }
+    if (!dressOwnsEl || !dressOwnsEl.checked || !dressAdultEl || !dressAdultEl.checked) {
+      setDressStatus("Tick both boxes (your photo + 18+)", "err");
+      return;
+    }
+    if (!dressBodyId) dressBodyId = "keep";
+    const extra = dressExtraEl ? dressExtraEl.value.trim() : "";
+    const custom = dressCustomEl ? dressCustomEl.value.trim() : "";
+    if (!extra && !custom && (!dressClothesId || dressClothesId === "keep")) {
+      setDressStatus("Write what you want in the prompt", "err");
+      return;
+    }
+    dressBusy = true;
+    if (dressGoBtn) dressGoBtn.disabled = true;
+    setDressStatus(usePrev ? "Updating this photo…" : "Generating… 20–40 sec", "");
+    try {
+      await ensureHoursCounting();
+      const res = await fetch("/api/image/dress", {
+        method: "POST",
+        headers: authHeaders(),
+        body: JSON.stringify({
+          image: usePrev ? undefined : dressLastDataUrl,
+          sourceUrl: usePrev ? lastDress.url : undefined,
+          identityUrl: usePrev ? lastDress.identityUrl || undefined : undefined,
+          identityImage:
+            usePrev && !lastDress.identityUrl && dressLastDataUrl
+              ? dressLastDataUrl
+              : undefined,
+          clothesId: usePrev ? "keep" : dressClothesId,
+          customText: usePrev ? "" : custom,
+          extraText: extra,
+          photoChat: photoHistory
+            .filter(function (item) {
+              return item && item.role === "user" && item.text;
+            })
+            .slice(-8)
+            .map(function (item) {
+              return item.text;
+            }),
+          bodyId: usePrev ? "keep" : dressBodyId,
+          figureId: usePrev ? "natural" : dressFigureId,
+          toneId: usePrev ? "photo" : dressToneId,
+          ownsPhoto: true,
+          adultConfirm: true,
+        }),
+      });
+      const data = await res.json().catch(function () {
+        return {};
+      });
+      if (typeof data.hoursBalance === "number") applyTimeFromResponse(data);
+      if (!res.ok) {
+        if (res.status === 401) {
+          logout();
+          return;
+        }
+        if (data.code === "NO_HOURS" || res.status === 402) {
+          openPaySheet();
+          setDressStatus(data.error || "No time left", "err");
+          return;
+        }
+        if (data.code === "PAID_ONLY") {
+          toast(data.error || "Paid users only", "err");
+          try {
+            openPaySheet();
+          } catch (e) {}
+          return;
+        }
+        setDressStatus(data.error || "Could not make that look", "err");
+        return;
+      }
+      const label = data.caption || extra || "Look";
+      const url = data.url;
+      addPhotoTurn(extra, url, label);
+      rememberDressLook(data);
+      savePhotoHistory();
+      setDressStatus("Done — type the next change below", "ok");
+      toast("Look ready", "ok");
+    } catch (e) {
+      setDressStatus((e && e.message) || "Network error", "err");
+    } finally {
+      dressBusy = false;
+      if (dressGoBtn) dressGoBtn.disabled = false;
+    }
+  }
+
+  if (photoForm) {
+    photoForm.addEventListener("submit", function (e) {
+      e.preventDefault();
+      runDressGenerate();
+    });
+  }
+  if (tabChatBtn) {
+    tabChatBtn.addEventListener("click", function () {
+      switchAppTab("chat");
+    });
+  }
+  if (tabPhotosBtn) {
+    tabPhotosBtn.addEventListener("click", function () {
+      if (window.__imageDressPaidOnly && !isReallyPaidUser()) {
+        toast("Photos are for paid users", "err");
+        try {
+          openPaySheet();
+        } catch (e) {}
+        return;
+      }
+      switchAppTab("photos");
+    });
+  }
+  if (photoNewBtn) {
+    photoNewBtn.addEventListener("click", function () {
+      forceNewPhoto = true;
+      lastDress = null;
+      dressLastDataUrl = "";
+      if (dressPreviewEl) {
+        dressPreviewEl.classList.add("hidden");
+        dressPreviewEl.removeAttribute("src");
+      }
+      if (dressUploadLabel) dressUploadLabel.classList.remove("has-file");
+      if (dressUploadText) dressUploadText.textContent = "Photo";
+      if (dressFileEl) dressFileEl.value = "";
+      paintPhotoComposer();
+      setDressStatus("Upload a new photo, then write a prompt", "");
+      if (dressExtraEl) dressExtraEl.focus();
+    });
+  }
+  if (dressFileEl) {
+    dressFileEl.addEventListener("change", async function () {
+      const file = dressFileEl.files && dressFileEl.files[0];
+      if (!file) return;
+      setDressStatus("Reading photo…", "");
+      const dataUrl = await compressDressImage(file);
+      if (!dataUrl) {
+        setDressStatus("Could not read that photo", "err");
+        return;
+      }
+      dressLastDataUrl = dataUrl;
+      forceNewPhoto = true;
+      lastDress = null;
+      if (dressPreviewEl) {
+        dressPreviewEl.src = dataUrl;
+        dressPreviewEl.classList.remove("hidden");
+      }
+      if (dressUploadLabel) dressUploadLabel.classList.add("has-file");
+      if (dressUploadText) dressUploadText.textContent = "Change";
+      paintPhotoComposer();
+      setDressStatus("Photo added — write a prompt and Generate", "ok");
+    });
   }
 
   let reportTargetText = "";
@@ -4696,7 +5267,13 @@
 
     try {
       const body = {
-        messages: history,
+        messages: history.filter(function (m) {
+          if (!m) return false;
+          if (m.imageUrl) return false;
+          if (/^\[Dress photo/i.test(String(m.content || ""))) return false;
+          if (/^\[Dress edit\]/i.test(String(m.content || ""))) return false;
+          return true;
+        }),
         language: languageEl.value,
         chatSource: source(),
       };

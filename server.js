@@ -55,6 +55,7 @@ const {
 } = require("./lib/maaAgent");
 const { roleIs } = require("./lib/roles");
 const billing = require("./lib/billing");
+const imageDress = require("./lib/imageDress");
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -412,12 +413,15 @@ async function callVenice(model, messages, options = {}) {
 
 function prepareMessages(messages) {
   // Keep a wide window so long sessions still remember the opening scene
-  return messages.slice(-56).map((msg) => {
-    if (msg.role === "user") {
-      return { role: "user", content: prepareUserContent(msg.content) };
-    }
-    return { role: msg.role, content: stripMashedLatin(String(msg.content || "")) };
-  });
+  return messages
+    .filter((msg) => !imageDress.isDressHistoryMessage(msg))
+    .slice(-56)
+    .map((msg) => {
+      if (msg.role === "user") {
+        return { role: "user", content: prepareUserContent(msg.content) };
+      }
+      return { role: msg.role, content: stripMashedLatin(String(msg.content || "")) };
+    });
 }
 
 function splitAgentBubbles(text) {
@@ -437,7 +441,7 @@ function stripPhotoTags(text) {
 }
 
 app.use(cors());
-app.use(express.json({ limit: "6mb" }));
+app.use(express.json({ limit: "12mb" }));
 
 // Keep search engines on the public landing page only
 app.use((req, res, next) => {
@@ -449,6 +453,7 @@ app.use((req, res, next) => {
     p.startsWith("/payment-uploads/") ||
     p.startsWith("/upi-uploads/") ||
     p.startsWith("/support-uploads/") ||
+    p.startsWith("/generated/") ||
     p.startsWith("/api/")
   ) {
     res.setHeader("X-Robots-Tag", "noindex, nofollow");
@@ -490,12 +495,17 @@ app.get("/admin.html", (_req, res) => {
 
 app.get("/api/client-config", (_req, res) => {
   res.setHeader("Cache-Control", "no-store");
-  res.json(billing.getClientConfig());
+  res.json({
+    ...billing.getClientConfig(),
+    imageDressEnabled: imageDress.imageDressEnabled(),
+    imageDressPaidOnly: imageDress.imageDressPaidOnly(),
+  });
 });
 
 app.use(express.static(PUBLIC_DIR));
 
 billing.ensureDirs();
+imageDress.ensureOutDir();
 
 function bearerToken(req) {
   const h = req.headers.authorization || "";
@@ -542,6 +552,25 @@ function requirePaid(req, res, next) {
       error: "Story import is for paid users — tap Pay to unlock",
       code: "PAID_ONLY",
     });
+  }
+  next();
+}
+
+function requireImageDress(req, res, next) {
+  if (!imageDress.imageDressEnabled()) {
+    return res.status(403).json({
+      error: "Photo looks are off on this server",
+      code: "DISABLED",
+    });
+  }
+  if (imageDress.imageDressPaidOnly()) {
+    const user = billing.getUser(req.userId);
+    if (!user || !user.hasPaid) {
+      return res.status(403).json({
+        error: "Photo looks are for paid users — tap Pay to unlock",
+        code: "PAID_ONLY",
+      });
+    }
   }
   next();
 }
@@ -1423,6 +1452,70 @@ app.post("/api/chat/opener", requireUser, requireHours, async (req, res) => {
   }
 });
 
+app.post(
+  "/api/image/dress",
+  requireUser,
+  requireHours,
+  requireImageDress,
+  async (req, res) => {
+    try {
+      if (!VENICE_API_KEY) {
+        return res.status(500).json({
+          error: "VENICE_API_KEY missing. Add it to your .env file.",
+        });
+      }
+      const result = await imageDress.dressPhoto({
+        userId: req.userId,
+        imageDataUrl: req.body && req.body.image,
+        clothesId: req.body && req.body.clothesId,
+        customText: req.body && req.body.customText,
+        extraText: req.body && req.body.extraText,
+        photoChat: Array.isArray(req.body && req.body.photoChat)
+          ? req.body.photoChat
+              .slice(-8)
+              .map((t) => String(t || "").trim().slice(0, 200))
+              .filter(Boolean)
+          : [],
+        sourceUrl: req.body && req.body.sourceUrl,
+        identityUrl: req.body && req.body.identityUrl,
+        identityImage: req.body && req.body.identityImage,
+        bodyId: req.body && req.body.bodyId,
+        figureId: req.body && req.body.figureId,
+        toneId: req.body && req.body.toneId,
+        ownsPhoto: !!(req.body && req.body.ownsPhoto),
+        adultConfirm: !!(req.body && req.body.adultConfirm),
+        apiKey: VENICE_API_KEY,
+        baseUrl: VENICE_BASE_URL,
+        model: process.env.VENICE_IMAGE_EDIT_MODEL || "qwen-edit-uncensored",
+      });
+      res.json({
+        ok: true,
+        url: result.url,
+        identityUrl: result.identityUrl || "",
+        caption: result.caption || result.outfit.label,
+        clothesId: result.outfit.id,
+        bodyId: result.body && result.body.id,
+        ...liveBillingFields(req.userId),
+      });
+    } catch (err) {
+      const msg = (err && err.message) || "Could not make that look";
+      const code = (err && err.code) || "";
+      const status =
+        code === "RATE"
+          ? 429
+          : code === "DISABLED"
+            ? 403
+            : /confirm|rights|18\+|clothes|body type|instruction|too large|JPEG|PNG|WebP|read/i.test(
+                msg
+              )
+              ? 400
+              : 502;
+      console.error("image/dress:", msg);
+      res.status(status).json({ error: msg, code: code || undefined });
+    }
+  }
+);
+
 app.post("/api/chat", requireUser, requireHours, async (req, res) => {
   try {
     if (!VENICE_API_KEY) {
@@ -2258,8 +2351,18 @@ app.post("/api/chat", requireUser, requireHours, async (req, res) => {
   }
 });
 
-app.listen(PORT, () => {
+const httpServer = app.listen(PORT, () => {
   billing.ensureDirs();
+  imageDress.ensureOutDir();
   console.log(`Chat running at http://localhost:${PORT}`);
   console.log(`Admin panel: http://localhost:${PORT}/admin.html`);
+});
+httpServer.on("error", (err) => {
+  if (err && err.code === "EADDRINUSE") {
+    console.error(
+      `Port ${PORT} is already in use. The app is already running — open http://localhost:${PORT} (do not start npm run dev again).`
+    );
+    process.exit(1);
+  }
+  throw err;
 });
