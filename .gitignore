@@ -5,6 +5,8 @@ node_modules/
 .pm2/
 public/generated/*
 !public/generated/.gitkeep
+data/generated/*
+!data/generated/.gitkeep
 public/dress-uploads/*
 !public/dress-uploads/.gitkeep
 public/payment-uploads/*

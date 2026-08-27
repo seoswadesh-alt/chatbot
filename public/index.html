@@ -402,17 +402,18 @@
         <div class="photo-toolbar">
           <div class="photo-toolbar-copy">
             <p class="photo-kicker">Photos</p>
-            <p class="photo-lead">Type like chat — it understands the next change.</p>
+            <p class="photo-lead">Upload one photo and keep chatting on that look. Upload another to switch.</p>
+            <p id="photo-mode" class="photo-mode">Upload a photo to start</p>
           </div>
           <div class="photo-toolbar-actions">
-            <button type="button" id="photo-new-btn" class="photo-new-btn">New photo</button>
+            <button type="button" id="photo-new-btn" class="photo-new-btn" title="Stop this look and pick a different photo">Switch photo</button>
             <button type="button" id="photo-clear-btn" class="photo-clear-btn">Clear all</button>
           </div>
         </div>
         <div id="photo-thread" class="photo-thread" aria-live="polite"></div>
         <div class="photo-dock">
           <form id="photo-form" class="photo-composer">
-            <label class="photo-pick" id="dress-upload-label" title="Upload a photo">
+            <label class="photo-pick" id="dress-upload-label" title="Upload a photo. Next prompts stay on this look until you pick another.">
               <input id="dress-file" type="file" accept="image/*" />
               <img id="dress-preview" class="photo-thumb hidden" alt="" />
               <span id="dress-upload-text">Photo</span>
@@ -428,6 +429,7 @@
             />
             <button type="submit" id="dress-go" class="auth-btn photo-go">Generate</button>
           </form>
+          <p id="photo-hint" class="photo-hint">Full-body works better than a face crop.</p>
           <div class="photo-foot">
             <div class="photo-legal">
               <label class="dress-check">

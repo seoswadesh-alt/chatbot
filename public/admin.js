@@ -170,6 +170,28 @@
   }
 
   let token = localStorage.getItem("adminToken") || "";
+
+  function syncPhotoAuthCookie(value) {
+    var t = value != null ? String(value) : String(token || "");
+    var secure = window.location.protocol === "https:" ? "; Secure" : "";
+    if (!t) {
+      document.cookie = "dc_img=; Path=/; SameSite=Lax; Max-Age=0" + secure;
+      return;
+    }
+    document.cookie =
+      "dc_img=" +
+      encodeURIComponent(t) +
+      "; Path=/; SameSite=Lax; Max-Age=2592000" +
+      secure;
+  }
+
+  function photoSrc(url) {
+    var raw = String(url || "");
+    var m = raw.match(/\/generated\/([df][a-f0-9]+\.(?:jpg|jpeg|png|webp))/i);
+    if (!m) return raw;
+    return "/api/photos/file/" + m[1];
+  }
+  syncPhotoAuthCookie();
   let usersCache = [];
   let paymentsCache = [];
   let pendingQrBase64 = null;
@@ -231,6 +253,7 @@
   function logout() {
     token = "";
     localStorage.removeItem("adminToken");
+    syncPhotoAuthCookie("");
     showLogin();
     setMsg("Logged out.", "ok");
   }
@@ -739,6 +762,7 @@
       }
       token = data.token;
       localStorage.setItem("adminToken", token);
+      syncPhotoAuthCookie(token);
       passEl.value = "";
       setMsg("");
       showDash();
@@ -1133,9 +1157,17 @@
     const models = data.models || {};
     const bits = [];
     if (data.backend) bits.push(String(data.backend));
+    if (ready && models.clip && /uncensored|heretic/i.test(String(models.clip))) {
+      bits.push("uncensored CLIP");
+    } else if (ready && data.clipHint) {
+      bits.push("official CLIP — modest");
+    }
     if (ready && models.unet) bits.push(String(models.unet).replace(/\.safetensors$/i, ""));
     else if (data.error) bits.push(String(data.error));
-    if (subEl) subEl.textContent = bits.join(" · ") || (ready ? "Qwen-Image-Edit" : "Pod not ready");
+    if (subEl) {
+      subEl.textContent = bits.join(" · ") || (ready ? "Qwen-Image-Edit" : "Pod not ready");
+      if (data.clipHint) subEl.title = data.clipHint;
+    }
   }
 
   async function loadGpuStatus() {
@@ -1811,7 +1843,7 @@
             ? new Date(look.createdAt).toLocaleString()
             : "";
           const prompt = look.prompt || look.caption || "(no prompt)";
-          const src = String(look.url || "");
+          const src = photoSrc(String(look.url || ""));
           return (
             "<figure class='admin-photo-look'>" +
             (src

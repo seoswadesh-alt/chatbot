@@ -249,6 +249,8 @@
   const dressOwnsEl = document.getElementById("dress-owns");
   const dressAdultEl = document.getElementById("dress-adult");
   const dressStatusEl = document.getElementById("dress-status");
+  const photoModeEl = document.getElementById("photo-mode");
+  const photoHintEl = document.getElementById("photo-hint");
   const chatPane = document.getElementById("chat-pane");
   const photoPane = document.getElementById("photo-pane");
   const photoThreadEl = document.getElementById("photo-thread");
@@ -483,6 +485,28 @@
   let rpSetup = "";
   let setupLocked = false;
   let authToken = localStorage.getItem("userToken") || "";
+
+  function syncPhotoAuthCookie(token) {
+    var t = token != null ? String(token) : String(authToken || "");
+    var secure = window.location.protocol === "https:" ? "; Secure" : "";
+    if (!t) {
+      document.cookie = "dc_img=; Path=/; SameSite=Lax; Max-Age=0" + secure;
+      return;
+    }
+    document.cookie =
+      "dc_img=" +
+      encodeURIComponent(t) +
+      "; Path=/; SameSite=Lax; Max-Age=2592000" +
+      secure;
+  }
+
+  function photoSrc(url) {
+    var raw = String(url || "");
+    var m = raw.match(/\/generated\/([df][a-f0-9]+\.(?:jpg|jpeg|png|webp))/i);
+    if (!m) return raw;
+    return "/api/photos/file/" + m[1];
+  }
+  syncPhotoAuthCookie();
   let currentUser = null;
   let localHours = 0;
   let localSyncedAt = 0;
@@ -1029,6 +1053,7 @@
     if (!data || !data.token || !data.user) return false;
     authToken = data.token;
     localStorage.setItem("userToken", authToken);
+    syncPhotoAuthCookie(authToken);
     localStorage.removeItem("adminToken");
     currentUser = data.user;
     if (currentUser && currentUser.userId) {
@@ -1770,6 +1795,7 @@
     hideUnlockNotice();
     authToken = "";
     currentUser = null;
+    syncPhotoAuthCookie("");
     localHours = 0;
     pendingRegisterSession = null;
     localStorage.removeItem("userToken");
@@ -3074,7 +3100,7 @@
     const bubble = document.createElement("div");
     bubble.className = "bubble image-bubble " + type;
     const img = document.createElement("img");
-    img.src = url;
+    img.src = photoSrc(url);
     img.alt = caption || "Look";
     img.className = "dress-zoom";
     img.addEventListener("click", function () {
@@ -3112,7 +3138,7 @@
 
   function openPhotoLightbox(url, caption) {
     if (!photoLightbox || !photoLightboxImg || !url) return;
-    photoLightboxImg.src = url;
+    photoLightboxImg.src = photoSrc(url);
     if (photoLightboxCap) photoLightboxCap.textContent = caption || "Tap outside to close";
     photoLightbox.classList.remove("hidden");
     photoLightbox.setAttribute("aria-hidden", "false");
@@ -3164,8 +3190,9 @@
       clothesId: data.clothesId || dressClothesId || "keep",
     };
     forceNewPhoto = false;
-    paintPhotoComposer();
     if (dressExtraEl) dressExtraEl.value = "";
+    paintPhotoComposer();
+    renderPhotoThread();
     keepPhotoKeyboardClosed();
   }
 
@@ -3189,11 +3216,47 @@
     return "";
   }
 
-  function ensureLastDressFromThread() {
-    if (lastDress && lastDress.url) {
-      forceNewPhoto = false;
+  function lastEventIsSwitch() {
+    for (var i = photoHistory.length - 1; i >= 0; i--) {
+      if (!photoHistory[i]) continue;
+      if (photoHistory[i].role === "switch") return true;
+      if (photoHistory[i].url || photoHistory[i].role === "user") return false;
+    }
+    return false;
+  }
+
+  function markPhotoSwitch() {
+    var last = photoHistory.length ? photoHistory[photoHistory.length - 1] : null;
+    if (last && last.role === "switch") return;
+    if (!photoHistory.length) return;
+    photoHistory.push({ role: "switch" });
+    savePhotoHistory();
+  }
+
+  function photoSourceMode() {
+    if (forceNewPhoto && dressLastDataUrl) return "new";
+    if (!forceNewPhoto && lastDress && lastDress.url) return "stuck";
+    return "empty";
+  }
+
+  function showPhotoThumb(url, label) {
+    if (!dressPreviewEl) return;
+    if (!url) {
+      dressPreviewEl.classList.add("hidden");
+      dressPreviewEl.removeAttribute("src");
+      if (dressUploadLabel) dressUploadLabel.classList.remove("has-file");
+      if (dressUploadText) dressUploadText.textContent = "Photo";
       return;
     }
+    dressPreviewEl.src = photoSrc(url);
+    dressPreviewEl.classList.remove("hidden");
+    if (dressUploadLabel) dressUploadLabel.classList.add("has-file");
+    if (dressUploadText) dressUploadText.textContent = label || "Switch";
+  }
+
+  function ensureLastDressFromThread() {
+    if (forceNewPhoto) return;
+    if (lastDress && lastDress.url) return;
     var url = lastPhotoUrl();
     if (!url) return;
     lastDress = {
@@ -3204,7 +3267,6 @@
       toneId: "photo",
       clothesId: "keep",
     };
-    forceNewPhoto = false;
   }
 
   function loadPhotoHistory() {
@@ -3215,23 +3277,62 @@
       if (data && Array.isArray(data.items)) photoHistory = data.items;
       if (data && data.lastDress && data.lastDress.url) lastDress = data.lastDress;
     } catch (e) {}
-    ensureLastDressFromThread();
+    if (lastEventIsSwitch()) {
+      forceNewPhoto = true;
+      lastDress = null;
+      return;
+    }
+    if (lastDress && lastDress.url) {
+      forceNewPhoto = false;
+      return;
+    }
+    if (photoHistory.length) {
+      forceNewPhoto = false;
+      ensureLastDressFromThread();
+    }
+  }
+
+  function renderPhotoEmpty() {
+    var empty = document.createElement("div");
+    empty.className = "photo-empty";
+    var title = document.createElement("p");
+    title.className = "photo-empty-title";
+    title.textContent = "How Photos works";
+    empty.appendChild(title);
+    var steps = document.createElement("ol");
+    steps.className = "photo-empty-steps";
+    [
+      "Upload one full-body photo",
+      "Each next prompt edits that last look",
+      "Upload another photo to switch",
+    ].forEach(function (text) {
+      var li = document.createElement("li");
+      li.textContent = text;
+      steps.appendChild(li);
+    });
+    empty.appendChild(steps);
+    photoThreadEl.appendChild(empty);
   }
 
   function renderPhotoThread() {
     if (!photoThreadEl) return;
     photoThreadEl.innerHTML = "";
     if (!photoHistory.length) {
-      var empty = document.createElement("p");
-      empty.className = "photo-empty";
-      empty.textContent =
-        "Upload a photo, write what you want, tap Generate.";
-      photoThreadEl.appendChild(empty);
+      renderPhotoEmpty();
       paintPhotoChrome();
       return;
     }
+    var mode = photoSourceMode();
+    var currentUrl = mode === "stuck" && lastDress ? lastDress.url : "";
     photoHistory.forEach(function (item) {
       if (!item) return;
+      if (item.role === "switch") {
+        var sw = document.createElement("div");
+        sw.className = "photo-switch";
+        sw.textContent = "Switched to a new photo";
+        photoThreadEl.appendChild(sw);
+        return;
+      }
       if (item.role === "user") {
         var p = document.createElement("div");
         p.className = "photo-prompt-bubble";
@@ -3242,13 +3343,20 @@
       if (item.url) {
         var wrap = document.createElement("div");
         wrap.className = "photo-result";
+        if (currentUrl && item.url === currentUrl) wrap.classList.add("is-current");
         var img = document.createElement("img");
-        img.src = item.url;
+        img.src = photoSrc(item.url);
         img.alt = item.caption || "Look";
         img.addEventListener("click", function () {
           openPhotoLightbox(item.url, item.caption);
         });
         wrap.appendChild(img);
+        if (currentUrl && item.url === currentUrl) {
+          var badge = document.createElement("span");
+          badge.className = "photo-current-badge";
+          badge.textContent = "Working on this";
+          wrap.appendChild(badge);
+        }
         photoThreadEl.appendChild(wrap);
       }
     });
@@ -3268,13 +3376,52 @@
   }
 
   function paintPhotoComposer() {
-    var editing = !!(lastDress && lastDress.url);
+    var mode = photoSourceMode();
+    var editing = mode === "stuck";
+    var pendingNew = mode === "new";
     if (dressExtraEl) {
       dressExtraEl.placeholder = editing
-        ? "Chat the next change…"
-        : "Tell it what you want…";
+        ? "Next change on this look…"
+        : pendingNew
+          ? "What should we do with this photo…"
+          : "Tell it what you want…";
     }
     if (dressGoBtn) dressGoBtn.textContent = editing ? "Apply" : "Generate";
+    if (dressUploadLabel) {
+      dressUploadLabel.classList.toggle("is-stuck", editing);
+      dressUploadLabel.classList.toggle("is-new", pendingNew);
+      dressUploadLabel.title = pendingNew
+        ? "This new photo replaces the old one"
+        : editing
+          ? "Stuck on this look. Tap to switch to another photo"
+          : "Upload a photo. Next prompts stay on this look until you pick another";
+    }
+    if (pendingNew) showPhotoThumb(dressLastDataUrl, "New");
+    else if (editing) showPhotoThumb(lastDress.url, "Switch");
+    else showPhotoThumb("", "Photo");
+    if (photoModeEl) {
+      photoModeEl.textContent = pendingNew
+        ? "New photo ready — first prompt starts here"
+        : editing
+          ? "Stuck on this look — next prompt edits it"
+          : "Upload a photo to start";
+      photoModeEl.classList.toggle("is-new", pendingNew);
+      photoModeEl.classList.toggle("is-stuck", editing);
+    }
+    if (photoHintEl) {
+      photoHintEl.textContent = pendingNew
+        ? "This new photo replaces the old one. Old looks stay in the thread."
+        : editing
+          ? "Keep chatting on this look. Upload another photo to switch."
+          : "Full-body works better than a face crop.";
+    }
+    if (photoPane) {
+      photoPane.classList.toggle("is-stuck", editing);
+      photoPane.classList.toggle("is-new-source", pendingNew);
+    }
+    if (photoNewBtn) {
+      photoNewBtn.hidden = mode === "empty" && !photoHistory.length;
+    }
     paintPhotoChrome();
   }
 
@@ -3446,8 +3593,8 @@
 
   async function runDressGenerate() {
     if (dressBusy) return;
-    ensureLastDressFromThread();
-    const usePrev = !!(lastDress && lastDress.url);
+    if (!forceNewPhoto) ensureLastDressFromThread();
+    const usePrev = !forceNewPhoto && !!(lastDress && lastDress.url);
     paintPhotoComposer();
     if (!dressLastDataUrl && !usePrev) {
       setDressStatus("Upload a photo first", "err");
@@ -3492,14 +3639,16 @@
           clothesId: usePrev ? "keep" : dressClothesId,
           customText: usePrev ? "" : custom,
           extraText: extra,
-          photoChat: photoHistory
-            .filter(function (item) {
-              return item && item.role === "user" && item.text;
-            })
-            .slice(-8)
-            .map(function (item) {
-              return item.text;
-            }),
+          photoChat: usePrev
+            ? photoHistory
+                .filter(function (item) {
+                  return item && item.role === "user" && item.text;
+                })
+                .slice(-8)
+                .map(function (item) {
+                  return item.text;
+                })
+            : [],
           bodyId: usePrev ? "keep" : dressBodyId,
           figureId: usePrev ? "natural" : dressFigureId,
           toneId: usePrev ? "photo" : dressToneId,
@@ -3561,12 +3710,7 @@
       addPhotoTurn(extra, url, label);
       rememberDressLook(data);
       savePhotoHistory();
-      setDressStatus(
-        data.backend === "comfy"
-          ? "Done — GPU painted this look. Tap below for the next change"
-          : "Done — tap below to type the next change",
-        "ok"
-      );
+      setDressStatus("Stuck on this look — type the next change", "ok");
       toast("Look ready", "ok");
       keepPhotoKeyboardClosed();
       setTimeout(keepPhotoKeyboardClosed, 80);
@@ -3614,14 +3758,9 @@
     forceNewPhoto = true;
     lastDress = null;
     dressLastDataUrl = "";
-    if (dressPreviewEl) {
-      dressPreviewEl.classList.add("hidden");
-      dressPreviewEl.removeAttribute("src");
-    }
-    if (dressUploadLabel) dressUploadLabel.classList.remove("has-file");
-    if (dressUploadText) dressUploadText.textContent = "Photo";
     if (dressFileEl) dressFileEl.value = "";
     paintPhotoComposer();
+    renderPhotoThread();
   }
 
   function clearAllPhotos() {
@@ -3644,8 +3783,9 @@
   }
   if (photoNewBtn) {
     photoNewBtn.addEventListener("click", function () {
+      markPhotoSwitch();
       resetPhotoSource();
-      setDressStatus("Upload a new photo, then write a prompt", "");
+      setDressStatus("Upload the next photo — it will replace this look", "");
       keepPhotoKeyboardClosed();
     });
   }
@@ -3672,14 +3812,13 @@
       dressLastDataUrl = dataUrl;
       forceNewPhoto = true;
       lastDress = null;
-      if (dressPreviewEl) {
-        dressPreviewEl.src = dataUrl;
-        dressPreviewEl.classList.remove("hidden");
-      }
-      if (dressUploadLabel) dressUploadLabel.classList.add("has-file");
-      if (dressUploadText) dressUploadText.textContent = "Change";
+      markPhotoSwitch();
       paintPhotoComposer();
-      setDressStatus("Photo added — write a prompt and Generate", "ok");
+      renderPhotoThread();
+      setDressStatus(
+        "Stuck to this photo. Write a prompt, then keep chatting. Upload another to switch.",
+        "ok"
+      );
     });
   }
 
@@ -6346,6 +6485,7 @@
         if (data.role === "admin" && data.token) {
           localStorage.setItem("adminToken", data.token);
           localStorage.removeItem("userToken");
+          syncPhotoAuthCookie(data.token);
           window.location.href = "/admin.html";
           return;
         }

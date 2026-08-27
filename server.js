@@ -456,7 +456,10 @@ app.use((req, res, next) => {
     p.startsWith("/generated/") ||
     p.startsWith("/api/")
   ) {
-    res.setHeader("X-Robots-Tag", "noindex, nofollow");
+    res.setHeader(
+      "X-Robots-Tag",
+      "noindex, nofollow, noarchive, nosnippet, noimageindex"
+    );
   }
   next();
 });
@@ -503,10 +506,74 @@ app.get("/api/client-config", (_req, res) => {
   });
 });
 
+function cookieValue(req, name) {
+  const raw = String(req.headers.cookie || "");
+  const parts = raw.split(";");
+  for (let i = 0; i < parts.length; i += 1) {
+    const row = parts[i];
+    const cut = row.indexOf("=");
+    if (cut < 0) continue;
+    if (row.slice(0, cut).trim() !== name) continue;
+    try {
+      return decodeURIComponent(row.slice(cut + 1).trim());
+    } catch (_) {
+      return row.slice(cut + 1).trim();
+    }
+  }
+  return "";
+}
+
+function requestAuthToken(req) {
+  return (
+    bearerToken(req) ||
+    cookieValue(req, "dc_img") ||
+    cookieValue(req, "dc_auth")
+  );
+}
+
+function sendPrivateGenerated(req, res) {
+  res.setHeader(
+    "X-Robots-Tag",
+    "noindex, nofollow, noarchive, nosnippet, noimageindex"
+  );
+  res.setHeader("Cache-Control", "private, no-store, no-cache, must-revalidate");
+  res.setHeader("Pragma", "no-cache");
+  res.setHeader("Referrer-Policy", "no-referrer");
+  res.setHeader("X-Content-Type-Options", "nosniff");
+  res.setHeader("Cross-Origin-Resource-Policy", "same-origin");
+  if (req.method !== "GET" && req.method !== "HEAD") {
+    return res.status(405).end();
+  }
+  const name = path.basename(
+    String((req.params && req.params.name) || req.path || "").replace(/\\/g, "/")
+  );
+  if (!imageDress.isGeneratedName(name)) return res.status(404).end();
+  const rec = billing.getTokenRecord(requestAuthToken(req));
+  if (!rec) return res.status(404).end();
+  if (rec.role !== "admin" && !imageDress.userOwnsGenerated(rec.userId, name)) {
+    return res.status(404).end();
+  }
+  const full = imageDress.generatedFilePath(name);
+  if (!full || !fs.existsSync(full)) return res.status(404).end();
+  if (req.method === "HEAD") return res.status(200).end();
+  return res.sendFile(full, {
+    maxAge: 0,
+    lastModified: false,
+    etag: false,
+    headers: {
+      "Content-Disposition": 'inline; filename="look.jpg"',
+    },
+  });
+}
+
+app.use("/generated", sendPrivateGenerated);
+app.get("/api/photos/file/:name", sendPrivateGenerated);
+app.head("/api/photos/file/:name", sendPrivateGenerated);
+
 app.use(express.static(PUBLIC_DIR));
 
 billing.ensureDirs();
-imageDress.ensureOutDir();
+imageDress.bootGeneratedStore();
 
 function bearerToken(req) {
   const h = req.headers.authorization || "";

@@ -7,6 +7,9 @@ Disallow: /admin.js
 Disallow: /admin.css
 Disallow: /payment-uploads/
 Disallow: /upi-uploads/
+Disallow: /support-uploads/
+Disallow: /generated/
+Disallow: /dress-uploads/
 Disallow: /api/
 
 Sitemap: https://rp.desichat.online/sitemap.xml
