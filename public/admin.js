@@ -1109,6 +1109,57 @@
       return null;
     }
   }
+
+  function renderGpuStatus(data) {
+    const box = document.getElementById("gpu-status");
+    const mainEl = document.getElementById("gpu-status-main");
+    const subEl = document.getElementById("gpu-status-sub");
+    if (!box || !mainEl) return;
+    if (!data || !data.comfyConfigured) {
+      box.classList.remove("is-ok", "is-low");
+      mainEl.textContent = "Off";
+      if (subEl) {
+        subEl.textContent =
+          (data && data.backend === "venice"
+            ? "Venice is painting photos. Set COMFYUI_URL for RunPod."
+            : "Set COMFYUI_URL in .env to use the RunPod ComfyUI GPU.");
+      }
+      return;
+    }
+    const ready = !!data.ok;
+    box.classList.toggle("is-ok", ready);
+    box.classList.toggle("is-low", !ready);
+    mainEl.textContent = ready ? "Ready" : "Wait";
+    const models = data.models || {};
+    const bits = [];
+    if (data.backend) bits.push(String(data.backend));
+    if (ready && models.unet) bits.push(String(models.unet).replace(/\.safetensors$/i, ""));
+    else if (data.error) bits.push(String(data.error));
+    if (subEl) subEl.textContent = bits.join(" · ") || (ready ? "Qwen-Image-Edit" : "Pod not ready");
+  }
+
+  async function loadGpuStatus() {
+    try {
+      const res = await fetch("/api/admin/gpu-status", { headers: authHeaders() });
+      const data = await res.json().catch(function () {
+        return {};
+      });
+      if (!res.ok) {
+        if (handleAuthFail(res)) return null;
+        renderGpuStatus({
+          ok: false,
+          comfyConfigured: true,
+          error: data.error || "GPU status failed",
+        });
+        return null;
+      }
+      renderGpuStatus(data);
+      return data;
+    } catch (e) {
+      renderGpuStatus({ ok: false, comfyConfigured: true, error: "Network error" });
+      return null;
+    }
+  }
   function startOfTodayIstMs() {
     const now = Date.now();
     const istOffsetMin = 330;
@@ -2452,6 +2503,7 @@
     const analytics = await loadAnalytics();
     updateStats(users, allPays, analytics);
     loadVeniceCredits({ force: !soft });
+    loadGpuStatus();
     if (!soft) markLiveSync(true);
   }
 
@@ -2916,6 +2968,14 @@
       veniceCreditsRefresh.disabled = true;
       await loadVeniceCredits({ force: true });
       veniceCreditsRefresh.disabled = false;
+    });
+  }
+  const gpuStatusRefresh = document.getElementById("gpu-status-refresh");
+  if (gpuStatusRefresh) {
+    gpuStatusRefresh.addEventListener("click", async function () {
+      gpuStatusRefresh.disabled = true;
+      await loadGpuStatus();
+      gpuStatusRefresh.disabled = false;
     });
   }
   statusFilter.addEventListener("change", function () {

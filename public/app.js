@@ -3470,7 +3470,12 @@
     keepPhotoKeyboardClosed();
     dressBusy = true;
     if (dressGoBtn) dressGoBtn.disabled = true;
-    setDressStatus(usePrev ? "Updating this photo…" : "Generating… 20–40 sec", "");
+    setDressStatus(
+      usePrev
+        ? "Reading your prompt, then updating…"
+        : "Reading your prompt, then painting…",
+      ""
+    );
     try {
       await ensureHoursCounting();
       const res = await fetch("/api/image/dress", {
@@ -3540,6 +3545,14 @@
           } catch (e) {}
           return;
         }
+        if (data.code === "GPU_DOWN" || res.status === 503) {
+          setDressStatus(
+            data.error ||
+              "Photo GPU is not ready. Start the RunPod and download Qwen-Image-Edit in ComfyUI.",
+            "err"
+          );
+          return;
+        }
         setDressStatus(data.error || "Could not make that look", "err");
         return;
       }
@@ -3548,7 +3561,12 @@
       addPhotoTurn(extra, url, label);
       rememberDressLook(data);
       savePhotoHistory();
-      setDressStatus("Done — tap below to type the next change", "ok");
+      setDressStatus(
+        data.backend === "comfy"
+          ? "Done — GPU painted this look. Tap below for the next change"
+          : "Done — tap below to type the next change",
+        "ok"
+      );
       toast("Look ready", "ok");
       keepPhotoKeyboardClosed();
       setTimeout(keepPhotoKeyboardClosed, 80);

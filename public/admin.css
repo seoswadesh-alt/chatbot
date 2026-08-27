@@ -330,6 +330,18 @@ button {
   color: #1a6fa8;
 }
 
+.gpu-status .venice-credits-main b {
+  color: #6b4ea1;
+}
+
+.gpu-status.is-ok .venice-credits-main b {
+  color: #08785e;
+}
+
+.gpu-status.is-low .venice-credits-main b {
+  color: var(--danger);
+}
+
 .stats-more-btn {
   display: block;
   width: 100%;

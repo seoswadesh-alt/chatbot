@@ -499,6 +499,7 @@ app.get("/api/client-config", (_req, res) => {
     ...billing.getClientConfig(),
     imageDressEnabled: imageDress.imageDressEnabled(),
     imageDressPaidOnly: imageDress.imageDressPaidOnly(),
+    ...imageDress.imageBackendInfo(),
   });
 });
 
@@ -871,6 +872,24 @@ app.get("/api/admin/venice-credits", requireAdmin, async (_req, res) => {
     res.status(502).json({
       ok: false,
       error: (e && e.message) || "Venice credits unavailable",
+    });
+  }
+});
+
+app.get("/api/admin/gpu-status", requireAdmin, async (_req, res) => {
+  try {
+    const info = imageDress.imageBackendInfo();
+    const probe = await imageDress.probeGpu();
+    res.json({
+      ok: !!probe.ok,
+      backend: info.backend,
+      comfyConfigured: info.comfyConfigured,
+      ...probe,
+    });
+  } catch (e) {
+    res.status(502).json({
+      ok: false,
+      error: (e && e.message) || "GPU status unavailable",
     });
   }
 });
@@ -1479,7 +1498,7 @@ app.post(
   requireImageDress,
   async (req, res) => {
     try {
-      if (!VENICE_API_KEY) {
+      if (!VENICE_API_KEY && !imageDress.imageBackendInfo().comfyConfigured) {
         return res.status(500).json({
           error: "VENICE_API_KEY missing. Add it to your .env file.",
         });
@@ -1518,6 +1537,7 @@ app.post(
         photoUsedHour: result.usage && result.usage.usedHour,
         photoCap: result.usage && result.usage.cap,
         photoBonus: result.usage && result.usage.bonus,
+        backend: result.backend || "",
         ...liveBillingFields(req.userId),
       });
     } catch (err) {
@@ -1529,6 +1549,8 @@ app.post(
           ? 429
           : code === "DISABLED"
             ? 403
+            : code === "GPU_DOWN"
+              ? 503
             : /confirm|rights|18\+|clothes|body type|instruction|too large|JPEG|PNG|WebP|read/i.test(
                 msg
               )
