@@ -628,6 +628,13 @@ body {
   line-height: 1.35;
 }
 
+.photo-toolbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
 .photo-new-btn {
   flex-shrink: 0;
   border: 1px solid var(--line);
@@ -645,6 +652,25 @@ body {
 .photo-new-btn:hover {
   border-color: var(--ok);
   color: var(--ok);
+}
+
+.photo-clear-btn {
+  flex-shrink: 0;
+  border: 1px solid rgba(184, 50, 64, 0.35);
+  background: #fff;
+  color: #9a2f3c;
+  border-radius: 999px;
+  padding: 8px 14px;
+  font: inherit;
+  font-size: 0.86rem;
+  font-weight: 700;
+  cursor: pointer;
+  min-height: 40px;
+}
+
+.photo-clear-btn:hover {
+  background: rgba(184, 50, 64, 0.08);
+  border-color: #9a2f3c;
 }
 
 .photo-thread {
@@ -3987,6 +4013,16 @@ body {
 
   .photo-toolbar {
     padding: 10px 12px;
+  }
+
+  .photo-toolbar-actions {
+    gap: 6px;
+  }
+
+  .photo-new-btn,
+  .photo-clear-btn {
+    padding: 8px 10px;
+    font-size: 0.8rem;
   }
 
   .photo-dock {

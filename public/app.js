@@ -254,6 +254,7 @@
   const photoThreadEl = document.getElementById("photo-thread");
   const photoForm = document.getElementById("photo-form");
   const photoNewBtn = document.getElementById("photo-new-btn");
+  const photoClearBtn = document.getElementById("photo-clear-btn");
   const appTabs = document.getElementById("app-tabs");
   const tabChatBtn = document.getElementById("tab-chat");
   const tabPhotosBtn = document.getElementById("tab-photos");
@@ -3504,21 +3505,53 @@
       switchAppTab("photos");
     });
   }
+  function resetPhotoSource() {
+    forceNewPhoto = true;
+    lastDress = null;
+    dressLastDataUrl = "";
+    if (dressPreviewEl) {
+      dressPreviewEl.classList.add("hidden");
+      dressPreviewEl.removeAttribute("src");
+    }
+    if (dressUploadLabel) dressUploadLabel.classList.remove("has-file");
+    if (dressUploadText) dressUploadText.textContent = "Photo";
+    if (dressFileEl) dressFileEl.value = "";
+    paintPhotoComposer();
+  }
+
+  function clearAllPhotos() {
+    photoHistory = [];
+    resetPhotoSource();
+    if (dressExtraEl) dressExtraEl.value = "";
+    if (dressCustomEl) dressCustomEl.value = "";
+    dressClothesId = "keep";
+    dressBodyId = "keep";
+    dressFigureId = "natural";
+    dressToneId = "photo";
+    try {
+      localStorage.removeItem(photoStoreKey());
+    } catch (e) {}
+    fillDressChips();
+    renderPhotoThread();
+    savePhotoHistory();
+    setDressStatus("Cleared — upload a photo to start again", "ok");
+    if (dressExtraEl) dressExtraEl.focus();
+  }
   if (photoNewBtn) {
     photoNewBtn.addEventListener("click", function () {
-      forceNewPhoto = true;
-      lastDress = null;
-      dressLastDataUrl = "";
-      if (dressPreviewEl) {
-        dressPreviewEl.classList.add("hidden");
-        dressPreviewEl.removeAttribute("src");
-      }
-      if (dressUploadLabel) dressUploadLabel.classList.remove("has-file");
-      if (dressUploadText) dressUploadText.textContent = "Photo";
-      if (dressFileEl) dressFileEl.value = "";
-      paintPhotoComposer();
+      resetPhotoSource();
       setDressStatus("Upload a new photo, then write a prompt", "");
       if (dressExtraEl) dressExtraEl.focus();
+    });
+  }
+  if (photoClearBtn) {
+    photoClearBtn.addEventListener("click", function () {
+      if (!photoHistory.length && !lastDress && !dressLastDataUrl) {
+        setDressStatus("Already empty", "");
+        return;
+      }
+      if (!window.confirm("Clear all photos in this thread and start over?")) return;
+      clearAllPhotos();
     });
   }
   if (dressFileEl) {
